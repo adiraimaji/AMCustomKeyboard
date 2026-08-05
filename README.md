@@ -1,6 +1,41 @@
+<div align="center">
+
 # ⌨️ AMCustomKeyboard
 
+### 🤖 An Android Keyboard (Input Method) App
+
 **A powerful fork of Unexpected Keyboard (built from its downloaded source code) with transliteration keymaps, independent key labels, and advanced layout customization.**
+
+[![Platform](https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white)](#)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](#)
+[![Release](https://img.shields.io/github/v/release/adiraimaji/AMCustomKeyboard?label=release&color=success)](../../releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/adiraimaji/AMCustomKeyboard/total.svg?color=orange)](../../releases)
+
+### 📥 [**Download the latest APK**](../../releases/latest)
+
+Grab the newest build from the **[Releases page](../../releases)** — no Play Store required.
+Just download the `.apk`, allow installs from unknown sources, and enable it as your system keyboard in **Settings → System → Languages & Input**.
+
+</div>
+
+---
+
+## 📱 Screenshots
+
+<div align="center">
+<table>
+<tr>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_1.jpeg" width="220"/></td>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_2.jpeg" width="220"/></td>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_3.jpeg" width="220"/></td>
+</tr>
+<tr>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_4.jpeg" width="220"/></td>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_5.jpeg" width="220"/></td>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_6.jpeg" width="220"/></td>
+</tr>
+</table>
+</div>
 
 ---
 
@@ -23,7 +58,9 @@
 
 ## Overview
 
-AMCustomKeyboard extends the standard keyboard model with three independent layers:
+AMCustomKeyboard is an **Android input method (IME) app** — it runs as your system keyboard, just like Gboard or SwiftKey, and can be enabled from **Settings → System → Languages & Input → Virtual Keyboard**.
+
+It extends the standard keyboard model with three independent layers:
 
 - **What the key shows** (label)
 - **What the key sends when tapped or swiped** (output)
@@ -162,33 +199,37 @@ The resulting behavior is:
 
 Each key has up to nine directional zones (center + eight swipe directions), each with its own **output**, **label**, and **shift variant**.
 
-### Lowercase Output Attributes
+<div style="display:grid;grid-template-columns:auto auto;gap:24px;justify-content:start;">
 
-| `nw` | `n` | `ne` |
-|:---:|:---:|:---:|
-| **`w`** | **`c`** | **`e`** |
-| `sw` | `s` | `se` |
+<table>
+<tr><th colspan="3" align="center">Lowercase Output</th></tr>
+<tr><td align="center"><code>nw</code></td><td align="center"><code>n</code></td><td align="center"><code>ne</code></td></tr>
+<tr><td align="center"><code>w</code></td><td align="center"><code>c</code></td><td align="center"><code>e</code></td></tr>
+<tr><td align="center"><code>sw</code></td><td align="center"><code>s</code></td><td align="center"><code>se</code></td></tr>
+</table>
 
-### Lowercase Label Attributes
+<table>
+<tr><th colspan="3" align="center">Lowercase Labels</th></tr>
+<tr><td align="center"><code>nwL</code></td><td align="center"><code>nL</code></td><td align="center"><code>neL</code></td></tr>
+<tr><td align="center"><code>wL</code></td><td align="center"><code>cL</code></td><td align="center"><code>eL</code></td></tr>
+<tr><td align="center"><code>swL</code></td><td align="center"><code>sL</code></td><td align="center"><code>seL</code></td></tr>
+</table>
 
-| `nwL` | `nL` | `neL` |
-|:---:|:---:|:---:|
-| **`wL`** | **`cL`** | **`eL`** |
-| `swL` | `sL` | `seL` |
+<table>
+<tr><th colspan="3" align="center">Uppercase Output (Shift)</th></tr>
+<tr><td align="center"><code>NW</code></td><td align="center"><code>N</code></td><td align="center"><code>NE</code></td></tr>
+<tr><td align="center"><code>W</code></td><td align="center"><code>C</code></td><td align="center"><code>E</code></td></tr>
+<tr><td align="center"><code>SW</code></td><td align="center"><code>S</code></td><td align="center"><code>SE</code></td></tr>
+</table>
 
-### Uppercase (Shift) Output Attributes
+<table>
+<tr><th colspan="3" align="center">Uppercase Labels (Shift)</th></tr>
+<tr><td align="center"><code>NWL</code></td><td align="center"><code>NL</code></td><td align="center"><code>NEL</code></td></tr>
+<tr><td align="center"><code>WL</code></td><td align="center"><code>CL</code></td><td align="center"><code>EL</code></td></tr>
+<tr><td align="center"><code>SWL</code></td><td align="center"><code>SL</code></td><td align="center"><code>SEL</code></td></tr>
+</table>
 
-| `NW` | `N` | `NE` |
-|:---:|:---:|:---:|
-| **`W`** | **`C`** | **`E`** |
-| `SW` | `S` | `SE` |
-
-### Uppercase (Shift) Label Attributes
-
-| `NWL` | `NL` | `NEL` |
-|:---:|:---:|:---:|
-| **`WL`** | **`CL`** | **`EL`** |
-| `SWL` | `SL` | `SEL` |
+</div>
 
 ---
 
