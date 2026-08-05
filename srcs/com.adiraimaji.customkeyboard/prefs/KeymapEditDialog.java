@@ -10,8 +10,8 @@ public class KeymapEditDialog
         String validate(String text);
     }
 
-    /** [allow_remove] shows a "remove" button, used when editing an existing
-     stored keymap (callback.select(null) means "delete it"). */
+    /** [allow_remove] shows a "Remove Keymap" button, used when editing an
+     existing stored keymap (callback.select(null) means "delete it"). */
     public static void show(
             Context ctx,
             String initialText,
@@ -22,6 +22,8 @@ public class KeymapEditDialog
                 ctx,
                 initialText,
                 allow_remove,
+                R.string.pref_keymap_title,
+                R.string.pref_keymap_remove,
                 new CustomLayoutEditDialog.Callback()
                 {
                     @Override

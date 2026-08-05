@@ -14,25 +14,39 @@ import android.widget.EditText;
 public class CustomLayoutEditDialog
 {
   /** Dialog for specifying a custom layout. [initial_text] is the layout
-      description when modifying a layout. */
+   description when modifying a layout. Uses the default "Custom Layout"
+   title and "Remove layout" label. */
   public static void show(Context ctx, String initial_text,
-      boolean allow_remove, final Callback callback)
+                          boolean allow_remove, final Callback callback)
+  {
+    show(ctx, initial_text, allow_remove,
+            R.string.pref_custom_layout_title,
+            R.string.pref_layouts_remove_custom,
+            callback);
+  }
+
+  /** Same as above but with a custom dialog title and remove-button label,
+   e.g. used by [KeymapEditDialog] to show "Keymap" / "Remove Keymap"
+   instead of the Custom Layout wording. */
+  public static void show(Context ctx, String initial_text,
+                          boolean allow_remove, int title_res, int remove_label_res,
+                          final Callback callback)
   {
     final LayoutEntryEditText input = new LayoutEntryEditText(ctx);
     input.setText(initial_text);
     AlertDialog.Builder dialog = new AlertDialog.Builder(ctx)
-      .setView(input)
-      .setTitle(R.string.pref_custom_layout_title)
-      .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener(){
-        public void onClick(DialogInterface _dialog, int _which)
-        {
-          callback.select(input.getText().toString());
-        }
-      })
-      .setNegativeButton(android.R.string.cancel, null);
+            .setView(input)
+            .setTitle(title_res)
+            .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener(){
+              public void onClick(DialogInterface _dialog, int _which)
+              {
+                callback.select(input.getText().toString());
+              }
+            })
+            .setNegativeButton(android.R.string.cancel, null);
     // Might be true when modifying an existing layout
     if (allow_remove)
-      dialog.setNeutralButton(R.string.pref_layouts_remove_custom, new DialogInterface.OnClickListener(){
+      dialog.setNeutralButton(remove_label_res, new DialogInterface.OnClickListener(){
         public void onClick(DialogInterface _dialog, int _which)
         {
           callback.select(null);
@@ -52,12 +66,12 @@ public class CustomLayoutEditDialog
   public interface Callback
   {
     /** The entered text when the user clicks "OK", [null] when the user
-        cancels editing. */
+     cancels editing. */
     public void select(String text);
 
     /** Return a human readable error string if the [text] contains an error.
-        Return [null] otherwise. The error string will be displayed atop the
-        input box. This method is called everytime the text changes. */
+     Return [null] otherwise. The error string will be displayed atop the
+     input box. This method is called everytime the text changes. */
     public String validate(String text);
   }
 
@@ -87,7 +101,7 @@ public class CustomLayoutEditDialog
       _ln_paint.setTextSize(_ln_paint.getTextSize() * 0.8f);
       setHorizontallyScrolling(true);
       setInputType(InputType.TYPE_CLASS_TEXT
-          | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+              | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
       _on_change_throttler = new Handler(ctx.getMainLooper());
     }
 
@@ -98,7 +112,7 @@ public class CustomLayoutEditDialog
 
     /** A mutable Rect object that is used during onDraw. */
     Rect _clip_bounds = new Rect();
-    
+
     /** The currently-set left padding amount */
     int _prev_padding = Integer.MIN_VALUE;
 
