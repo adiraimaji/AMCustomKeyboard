@@ -1,0 +1,6 @@
+A principal característica é que você pode digitar mais caracteres deslizando as teclas para os cantos.
+
+O app foi criado originalmente para desenvolvedores que usam Termux.
+Agora aperfeiçoado para o uso diário.
+
+Este aplicativo não contém anúncios e é Open Source.

@@ -1,0 +1,13 @@
+*.keystore
+*.keystore.asc
+/*-keystore.conf
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/captures
+/build
+# Directory _build is not used anymore
+/_build
+/release

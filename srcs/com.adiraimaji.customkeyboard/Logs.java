@@ -1,0 +1,53 @@
+package com.adiraimaji.customkeyboard;
+
+import android.text.InputType;
+import android.util.Log;
+import android.util.LogPrinter;
+import android.view.inputmethod.EditorInfo;
+import org.json.JSONException;
+
+public final class Logs
+{
+  static final String TAG = "com.adiraimaji.customkeyboard";
+
+  static LogPrinter _debug_logs = null;
+
+  public static void set_debug_logs(boolean d)
+  {
+    _debug_logs = d ? new LogPrinter(Log.DEBUG, TAG) : null;
+  }
+
+  public static void debug_startup_input_view(EditorInfo info, Config conf)
+  {
+    if (_debug_logs == null)
+      return;
+    info.dump(_debug_logs, "");
+    if (info.extras != null)
+      _debug_logs.println("extras: "+info.extras.toString());
+    _debug_logs.println("class: "+(info.inputType & InputType.TYPE_MASK_CLASS));
+    _debug_logs.println("flags: "+(info.inputType & InputType.TYPE_MASK_FLAGS));
+    _debug_logs.println("variation: "+(info.inputType & InputType.TYPE_MASK_VARIATION));
+  }
+
+  public static void debug_config_migration(int from_version, int to_version)
+  {
+    debug("Migrating config version from " + from_version + " to " + to_version);
+  }
+
+  public static void debug(String s)
+  {
+    if (_debug_logs != null)
+      _debug_logs.println(s);
+  }
+
+  public static void exn(String msg, Exception e)
+  {
+    Log.e(TAG, msg, e);
+  }
+
+  public static void trace()
+  {
+    if (_debug_logs != null)
+      _debug_logs.println(Log.getStackTraceString(new Exception()));
+  }
+}

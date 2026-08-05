@@ -1,0 +1,14 @@
+(executable
+ (name main)
+ (public_name cdict-tool)
+ (package cdict-tool)
+ (libraries
+  cmdliner
+  cdict
+  cdict.builder
+  aosp_parser
+  astring
+  bytesrw
+  jsont
+  jsont.bytesrw
+  re))

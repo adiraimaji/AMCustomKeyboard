@@ -1,0 +1,7 @@
+(library
+ (public_name cdict)
+ (name cdict)
+ (libraries cdict.c)
+ (foreign_stubs
+  (language c)
+  (names cdict_stubs)))

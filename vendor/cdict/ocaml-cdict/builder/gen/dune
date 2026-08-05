@@ -1,0 +1,6 @@
+(executable
+ (name gen_constants)
+ (libraries cdict.c)
+ (foreign_stubs
+  (language c)
+  (names gen_constants)))

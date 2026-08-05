@@ -1,0 +1,12 @@
+(cram
+ (package cdict-tool)
+ (deps %{bin:cdict-tool}))
+
+(cram
+ (applies_to plain_text)
+ (deps %{dep:plain_text.t/ocaml_manual.txt}))
+
+(subdir
+ plain_text.t/
+ (rule
+  (copy ../../corpus/ocaml_manual.txt ocaml_manual.txt)))

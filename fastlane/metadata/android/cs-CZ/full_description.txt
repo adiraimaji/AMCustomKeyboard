@@ -1,0 +1,6 @@
+Hlavní funkcí je možnost psát více znaků posunutím kláves směrem k rohům.
+
+Tato aplikace byla původně navržena pro programátory používající Termux.
+Nyní je ideální pro každodenní použití.
+
+Tato aplikace neobsahuje žádné reklamy a je Open Source.

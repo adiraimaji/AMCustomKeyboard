@@ -1,0 +1,6 @@
+La caratteristica principale è quella di poter digitare altri caratteri scorrendo verso i bordi dei tasti.
+
+L'applicazione era originariamente pensata per l'utilizzo di Termux da parte di programmatori.
+Ora è perfetta anche per l'uso quotidiano.
+
+L'applicazione non contiene pubblicità ed è Open Source.

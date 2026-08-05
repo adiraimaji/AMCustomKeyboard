@@ -1,0 +1,16 @@
+(subdir
+ java.t
+ (rule
+  (copy ../../../java/cdict_java.jar cdict_java.jar))
+ (rule
+  (copy ../../../java/libcdict_java.so libcdict_java.so))
+ (rule
+  (copy ../../corpus/ocaml_manual.txt ocaml_manual.txt)))
+
+(cram
+ (package cdict-java)
+ (deps
+  %{bin:cdict-tool}
+  %{dep:java.t/ocaml_manual.txt}
+  %{dep:java.t/cdict_java.jar}
+  %{dep:java.t/libcdict_java.so}))

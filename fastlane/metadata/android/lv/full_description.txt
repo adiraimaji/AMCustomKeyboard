@@ -1,0 +1,6 @@
+Tastatūras galvenā iespēja — viegli ievadīt jebkuru ASCII rakstzīmi ar pavilkšanu uz taustiņu stūriem.
+
+Sākotnēji šī lietotne tika izstrādāta programmētājiem, kas izmanto Termux.
+Tagad tā lieliski piemērota arī ikdienas lietošanai.
+
+Lietotne nesatur reklāmas, un tās pirmkods ir pieejams visiem.

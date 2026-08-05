@@ -1,0 +1,47 @@
+(rule
+ (targets
+  (dir classes)
+  (dir gen_interfaces))
+ (package cdict-java)
+ (action
+  (run javac -d classes -h gen_interfaces %{dep:adiraimaji.cdict/Cdict.java})))
+
+(rule
+ (target libcdict_java.so)
+ (deps
+  (source_tree jni)
+  ../libcdict/libcdict.h)
+ (action
+  (run
+   %{cc}
+   -o
+   %{target}
+   -shared
+   -I
+   ../libcdict
+   -I
+   jni
+   %{dep:../libcdict/libcdict.o}
+   %{dep:jni/adiraimaji_cdict_Cdict.c})))
+
+(rule
+ (target cdict_java.jar)
+ (deps classes)
+ (action
+  (run jar -cf %{target} -C classes/ .)))
+
+(subdir
+ jni
+ ; Promote the generated header files to make them accessible when using an
+ ; other build system.
+ ; The headers are concatenated into a single file name to reduce maintenance.
+ (rule
+  (mode promote)
+  (package cdict-java)
+  (deps
+   (:intfs
+    (glob_files ../gen_interfaces/*)))
+  (action
+   (with-stdout-to
+    adiraimaji_cdict.h
+    (run cat %{intfs})))))
