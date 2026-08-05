@@ -1,6 +1,6 @@
 # ⌨️ AMCustomKeyboard
 
-**A powerful fork of Unexpected Keyboard with transliteration keymaps, independent key labels, and advanced layout customization.**
+**A powerful fork of Unexpected Keyboard (built from its downloaded source code) with transliteration keymaps, independent key labels, and advanced layout customization.**
 
 ---
 
