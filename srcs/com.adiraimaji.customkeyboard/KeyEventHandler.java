@@ -12,9 +12,9 @@ import java.util.Iterator;
 import com.adiraimaji.customkeyboard.suggestions.Suggestions;
 
 public final class KeyEventHandler
-  implements Config.IKeyEventHandler,
-             ClipboardHistoryService.ClipboardPasteCallback,
-             CurrentlyTypedWord.Callback
+        implements Config.IKeyEventHandler,
+        ClipboardHistoryService.ClipboardPasteCallback,
+        CurrentlyTypedWord.Callback
 {
   IReceiver _recv;
   Autocapitalisation _autocap;
@@ -37,14 +37,14 @@ public final class KeyEventHandler
             }
           };
   /** State of the system modifiers. It is updated whether a modifier is down
-      or up and a corresponding key event is sent. */
+   or up and a corresponding key event is sent. */
   Pointers.Modifiers _mods;
   /** Consistent with [_mods]. This is a mutable state rather than computed
-      from [_mods] to ensure that the meta state is correct while up and down
-      events are sent for the modifier keys. */
+   from [_mods] to ensure that the meta state is correct while up and down
+   events are sent for the modifier keys. */
   int _meta_state = 0;
   /** Whether to force sending arrow keys to move the cursor when
-      [setSelection] could be used instead. */
+   [setSelection] could be used instead. */
   boolean _move_cursor_force_fallback = false;
   /** Whether the space bar automatically enters the best suggestion. */
   boolean _space_bar_auto_complete = false;
@@ -64,7 +64,7 @@ public final class KeyEventHandler
     _recv = recv;
     Handler handler = recv.getHandler();
     _autocap = new Autocapitalisation(handler,
-        this.new Autocapitalisation_callback());
+            this.new Autocapitalisation_callback());
     _mods = Pointers.Modifiers.EMPTY;
     _suggestions = sg;
     _typedword = new CurrentlyTypedWord(handler, this);
@@ -96,7 +96,7 @@ public final class KeyEventHandler
   }
 
   /** A key is being pressed. There will not necessarily be a corresponding
-      [key_up] event. */
+   [key_up] event. */
   @Override
   public void key_down(KeyValue key, boolean isSwipe)
   {
@@ -188,7 +188,7 @@ public final class KeyEventHandler
   }
 
   /** Update [_mods] to be consistent with the [mods], sending key events if
-      needed. */
+   needed. */
   void update_meta_state(Pointers.Modifiers mods)
   {
     // Released modifiers
@@ -270,8 +270,8 @@ public final class KeyEventHandler
     if (conn == null)
       return;
     conn.sendKeyEvent(new KeyEvent(1, 1, eventAction, eventCode, 0,
-          metaState, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
-          KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE));
+            metaState, KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+            KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE));
     if (eventAction == KeyEvent.ACTION_UP)
     {
       _autocap.event_sent(eventCode, metaState);
@@ -284,17 +284,18 @@ public final class KeyEventHandler
     send_text(text, false);
   }
 
-  /** [bypass_keymap] is true when the text came from a directional swipe
-   rather than a center tap - in that case KeymapEngine never runs and
-   the literal character(s) are committed as-is, e.g. a swipe-typed "a"
-   always stays "a" even if a center-typed "a" would become "அ". */
-  void send_text(String text, boolean bypass_keymap)
+  /** [is_swipe] is true when the text came from a directional swipe
+   rather than a center tap. Whether swipe input actually gets
+   transliterated depends on the active layout's "swipekeymap"
+   attribute - that decision now lives in KeymapEngine, since it's a
+   per-layout setting rather than a fixed rule here. */
+  void send_text(String text, boolean is_swipe)
   {
     InputConnection conn = _recv.getCurrentInputConnection();
     if (conn == null)
       return;
     _autocap.typed(text);
-    if (bypass_keymap || !KeymapEngine.get().process(conn, text, _typedword_tracker))
+    if (!KeymapEngine.get().process(conn, text, _typedword_tracker, is_swipe))
     {
       conn.commitText(text, 1);
       _typedword.typed(text);
@@ -302,7 +303,7 @@ public final class KeyEventHandler
   }
 
   void replace_surrounding_text(int remove_before, int remove_after,
-      String new_text)
+                                String new_text)
   {
     InputConnection conn = _recv.getCurrentInputConnection();
     if (conn == null)
@@ -351,7 +352,7 @@ public final class KeyEventHandler
   static ExtractedTextRequest _move_cursor_req = null;
 
   /** Query the cursor position. The extracted text is empty. Returns [null] if
-      the editor doesn't support this operation. */
+   the editor doesn't support this operation. */
   ExtractedText get_cursor_pos(InputConnection conn)
   {
     if (_move_cursor_req == null)
@@ -390,9 +391,9 @@ public final class KeyEventHandler
   }
 
   /** Move the cursor right or left, if possible without sending key events.
-      Unlike arrow keys, the selection is not removed even if shift is not on.
-      Falls back to sending arrow keys events if the editor do not support
-      moving the cursor or a modifier other than shift is pressed. */
+   Unlike arrow keys, the selection is not removed even if shift is not on.
+   Falls back to sending arrow keys events if the editor do not support
+   moving the cursor or a modifier other than shift is pressed. */
   void move_cursor(int d)
   {
     InputConnection conn = _recv.getCurrentInputConnection();
@@ -424,7 +425,7 @@ public final class KeyEventHandler
   }
 
   /** Move one of the two side of a selection. If [sel_left] is true, the left
-      position is moved, otherwise the right position is moved. */
+   position is moved, otherwise the right position is moved. */
   void move_cursor_sel(int d, boolean sel_left, boolean key_down)
   {
     InputConnection conn = _recv.getCurrentInputConnection();
@@ -459,12 +460,12 @@ public final class KeyEventHandler
   }
 
   /** Returns whether the selection can be set using [conn.setSelection()].
-      This can happen on Termux or when system modifiers are activated for
-      example. */
+   This can happen on Termux or when system modifiers are activated for
+   example. */
   boolean can_set_selection(InputConnection conn)
   {
     final int system_mods =
-      KeyEvent.META_CTRL_ON | KeyEvent.META_ALT_ON | KeyEvent.META_META_ON;
+            KeyEvent.META_CTRL_ON | KeyEvent.META_ALT_ON | KeyEvent.META_META_ON;
     return !_move_cursor_force_fallback && (_meta_state & system_mods) == 0;
   }
 
@@ -477,7 +478,7 @@ public final class KeyEventHandler
   }
 
   /** Move the cursor up and down. This sends UP and DOWN key events that might
-      make the focus exit the text box. */
+   make the focus exit the text box. */
   void move_cursor_vertical(int d)
   {
     if (d < 0)
@@ -496,7 +497,7 @@ public final class KeyEventHandler
   }
 
   /** Evaluate the macro asynchronously to make sure event are processed in the
-      right order. */
+   right order. */
   void evaluate_macro_loop(final KeyValue[] keys, int i, Pointers.Modifiers mods, final boolean autocap_paused)
   {
     boolean should_delay = false;
@@ -577,19 +578,19 @@ public final class KeyEventHandler
   }
 
   /** The word that was replaced by a suggestion when the last action was to
-      enter a suggestion (with the space bar or the candidates view) or [null]
-      otherwise. */
+   enter a suggestion (with the space bar or the candidates view) or [null]
+   otherwise. */
   String last_replaced_word = null;
   /** Length of the text before the cursor that should be replaced by
-      backspace. */
+   backspace. */
   int last_replacement_word_len = 0;
 
   /** Implement autocorrect when enabled in the settings. */
   void handle_space_bar()
   {
     if (_space_bar_auto_complete && _suggestions.count > 0
-        && !_typedword.is_selection_not_empty()
-        && _typedword.cursor_relative() == 0)
+            && !_typedword.is_selection_not_empty()
+            && _typedword.cursor_relative() == 0)
       suggestion_entered(_suggestions.suggestions[0] + " ");
     else
       send_text(" ");
@@ -599,7 +600,7 @@ public final class KeyEventHandler
   void handle_backspace()
   {
     if (_last_action == LastAction.SUGGESTION_ENTERED
-        && last_replaced_word != null)
+            && last_replaced_word != null)
     {
       replace_surrounding_text(last_replacement_word_len, 0, last_replaced_word);
       last_replaced_word = null;

@@ -21,10 +21,13 @@ public final class KeyboardData
   public final String numpad_script;
   public final String name;
   public final String keymap;
+  public final boolean swipekeymap;
   public final boolean bottom_row;
   public final boolean embedded_number_row;
   public final boolean locale_extra_keys;
   private Map<KeyValue, KeyPos> _key_pos = null;
+
+
 
   public KeyboardData mapKeys(MapKey f)
   {
@@ -220,6 +223,7 @@ public final class KeyboardData
       throw error(parser, "'numpad_script' attribute cannot be empty");
     String name = parser.getAttributeValue(null, "name");
     String keymap = parser.getAttributeValue(null, "keymap");
+    boolean swipekeymap = attribute_bool(parser, "swipekeymap", false);
     ArrayList<Row> rows = new ArrayList<Row>();
     Modmap modmap = null;
     while (next_tag(parser))
@@ -239,7 +243,7 @@ public final class KeyboardData
       }
     }
     float kw = (specified_kw != 0f) ? specified_kw : compute_max_width(rows);
-    return new KeyboardData(rows, kw, modmap, script, numpad_script, name, keymap, bottom_row, embedded_number_row, locale_extra_keys);
+    return new KeyboardData(rows, kw, modmap, script, numpad_script, name, keymap, swipekeymap, bottom_row, embedded_number_row, locale_extra_keys);
   }
 
   private static float compute_max_width(List<Row> rows)
@@ -264,6 +268,7 @@ public final class KeyboardData
                          String npsc,
                          String name_,
                          String keymap_,
+                         boolean swipekeymap_,
                          boolean bottom_row_,
                          boolean embedded_number_row_,
                          boolean locale_extra_keys_)
@@ -277,6 +282,7 @@ public final class KeyboardData
     numpad_script = npsc;
     name = name_;
     keymap = keymap_;
+    swipekeymap = swipekeymap_;
     keysWidth = Math.max(kw, 1f);
     keysHeight = kh;
     bottom_row = bottom_row_;
@@ -287,7 +293,7 @@ public final class KeyboardData
   public KeyboardData with_rows(List<Row> rows_)
   {
     return new KeyboardData(rows_, compute_max_width(rows_), modmap, script,
-            numpad_script, name, keymap, bottom_row, embedded_number_row,
+            numpad_script, name, keymap, swipekeymap, bottom_row, embedded_number_row,
             locale_extra_keys);
   }
 

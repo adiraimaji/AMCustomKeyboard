@@ -4,8 +4,11 @@ import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
+import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceManager;
+
+import com.adiraimaji.customkeyboard.prefs.LayoutsPreference;
 
 public class SettingsActivity extends PreferenceActivity
 {
@@ -33,6 +36,19 @@ public class SettingsActivity extends PreferenceActivity
     findPreference("keyboard_height_landscape_unfolded").setEnabled(foldableDevice);
   }
 
+  @Override
+  protected void onResume()
+  {
+    super.onResume();
+    // KeymapBuilderActivity (and anything else that saves a keymap outside
+    // LayoutsPreference's own dialogs) only triggers onResume() when we
+    // return to this screen, not a fresh onCreate()/onSetInitialValue().
+    // Re-sync here so any newly created keymap shows up immediately.
+    Preference p = findPreference("layouts");
+    if (p instanceof LayoutsPreference)
+      ((LayoutsPreference)p).refresh_keymap_entries();
+  }
+
   void fallbackEncrypted()
   {
     // Can't communicate with the user here.
@@ -42,8 +58,8 @@ public class SettingsActivity extends PreferenceActivity
   protected void onStop()
   {
     DirectBootAwarePreferences
-      .copy_preferences_to_protected_storage(this,
-          getPreferenceManager().getSharedPreferences());
+            .copy_preferences_to_protected_storage(this,
+                    getPreferenceManager().getSharedPreferences());
     super.onStop();
   }
 }

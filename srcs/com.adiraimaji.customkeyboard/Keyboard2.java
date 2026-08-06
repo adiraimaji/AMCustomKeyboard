@@ -34,7 +34,7 @@ import com.adiraimaji.customkeyboard.suggestions.CandidatesView;
 import com.adiraimaji.customkeyboard.suggestions.Suggestions;
 
 public class Keyboard2 extends InputMethodService
-  implements SharedPreferences.OnSharedPreferenceChangeListener
+        implements SharedPreferences.OnSharedPreferenceChangeListener
 {
   /** The view containing the keyboard and candidates view. */
   private ViewGroup _keyboard_container_view;
@@ -104,15 +104,14 @@ public class Keyboard2 extends InputMethodService
     refresh_keymap();
   }
 
-  /** Loads (or clears) the KeymapEngine mapping based on the "keymap"
-   attribute of the layout currently on screen. This is what links a
-   <keyboard ... keymap="tamil_phonetic_unicode"> layout to the keymap
-   JSON saved via "Add new Keymap JSON". */
+  /** Loads (or clears) the KeymapEngine mapping based on the "keymap" and
+   "swipekeymap" attributes of the layout currently on screen. */
   private void refresh_keymap()
   {
     KeyboardData layout = current_layout();
     String keymap_name = (layout != null) ? layout.keymap : null;
-    KeymapEngine.get().load(this, keymap_name);
+    boolean allow_swipe = (layout != null) && layout.swipekeymap;
+    KeymapEngine.get().load(this, keymap_name, allow_swipe);
   }
 
   KeyboardData loadLayout(int layout_id)
@@ -124,19 +123,19 @@ public class Keyboard2 extends InputMethodService
   KeyboardData loadNumpad(int layout_id)
   {
     return LayoutModifier.modify_numpad(KeyboardData.load(getResources(), layout_id),
-        current_layout_unmodified());
+            current_layout_unmodified());
   }
 
   KeyboardData loadNumericLayout()
   {
     return loadNumpad(_config.orientation_landscape ?
-        R.xml.numeric_landscape : R.xml.numeric);
+            R.xml.numeric_landscape : R.xml.numeric);
   }
 
   KeyboardData loadPinentry(int layout_id)
   {
     return LayoutModifier.modify_pinentry(KeyboardData.load(getResources(), layout_id),
-        current_layout_unmodified());
+            current_layout_unmodified());
   }
 
   @Override
@@ -148,7 +147,7 @@ public class Keyboard2 extends InputMethodService
     _foldStateTracker = new FoldStateTracker(this);
     _dictionaries = Dictionaries.instance(this);
     Config.initGlobalConfig(prefs, getResources(),
-        _foldStateTracker.isUnfolded(), _dictionaries);
+            _foldStateTracker.isUnfolded(), _dictionaries);
     _config = Config.globalConfig();
     Receiver recvr = this.new Receiver();
     _suggestions = new Suggestions(recvr, _config);
@@ -202,16 +201,16 @@ public class Keyboard2 extends InputMethodService
   private void refresh_current_dictionary()
   {
     _config.should_show_dictionary_switch =
-      (_config.device_locales.installed.size() > 0);
+            (_config.device_locales.installed.size() > 0);
     String selected = _dictionaries.get_selected(_config);
     String fallback = (_config.device_locales.default_ != null) ?
-      _config.device_locales.default_.dictionary : null;
+            _config.device_locales.default_.dictionary : null;
     _dictionaries.set_current_dictionary(_config,
-        (selected != null) ? selected : fallback);
+            (selected != null) ? selected : fallback);
   }
 
   /** Remember and apply the dictionary chosen by the user for the current
-      context. */
+   context. */
   private void select_dictionary(String dict_name)
   {
     _dictionaries.set_selected(_config, dict_name);
@@ -222,9 +221,9 @@ public class Keyboard2 extends InputMethodService
   private void refresh_candidates_view()
   {
     boolean should_show =
-      _config.suggestions_enabled
-      && _config.editor_config.should_show_candidates_view
-      && !_config.split_layout;
+            _config.suggestions_enabled
+                    && _config.editor_config.should_show_candidates_view
+                    && !_config.split_layout;
     if (should_show)
     {
       _candidates_view.refresh_config(_config);
@@ -234,7 +233,7 @@ public class Keyboard2 extends InputMethodService
   }
 
   /** Might re-create the keyboard view. [_keyboard_layout_view.setKeyboard()] and
-      [setInputView()] must be called soon after. */
+   [setInputView()] must be called soon after. */
   private void refresh_config()
   {
     int prev_theme = _config.theme;
@@ -264,7 +263,7 @@ public class Keyboard2 extends InputMethodService
       {
         case PIN:
           return loadPinentry(_config.orientation_landscape ?
-              R.xml.pin_landscape : R.xml.pin);
+                  R.xml.pin_landscape : R.xml.pin);
         case NUMBER:
           return loadNumericLayout();
       }
@@ -312,7 +311,7 @@ public class Keyboard2 extends InputMethodService
     {
       WindowManager.LayoutParams wattrs = window.getAttributes();
       wattrs.layoutInDisplayCutoutMode =
-        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+              WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
       // Allow to draw behind system bars
       wattrs.setFitInsetsTypes(0);
       window.setDecorFitsSystemWindows(false);
@@ -410,8 +409,8 @@ public class Keyboard2 extends InputMethodService
     if (super.onEvaluateInputViewShown())
       return true;
     if (getResources().getConfiguration().hardKeyboardHidden
-        == Configuration.HARDKEYBOARDHIDDEN_NO
-        && _config.physical_keyboard_hide)
+            == Configuration.HARDKEYBOARDHIDDEN_NO
+            && _config.physical_keyboard_hide)
     {
       Logs.debug("Physical keyboard is present");
       return false;
@@ -439,7 +438,7 @@ public class Keyboard2 extends InputMethodService
 
   /** Not static */
   public class Receiver implements KeyEventHandler.IReceiver,
-         KeyValue.Stateful.Symbol_provider, DictionarySwitcher.Callback
+          KeyValue.Stateful.Symbol_provider, DictionarySwitcher.Callback
   {
     public void handle_event_key(KeyValue.Event ev)
     {
@@ -519,13 +518,13 @@ public class Keyboard2 extends InputMethodService
 
         case SWITCH_VOICE_TYPING:
           if (!VoiceImeSwitcher.switch_to_voice_ime(Keyboard2.this, get_imm(),
-                Config.globalPrefs()))
+                  Config.globalPrefs()))
             _config.shouldOfferVoiceTyping = false;
           break;
 
         case SWITCH_VOICE_TYPING_CHOOSER:
           VoiceImeSwitcher.choose_voice_ime(Keyboard2.this, get_imm(),
-              Config.globalPrefs());
+                  Config.globalPrefs());
           break;
 
         case HIDE_SELF:

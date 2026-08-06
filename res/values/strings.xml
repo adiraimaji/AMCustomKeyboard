@@ -173,4 +173,17 @@
     <string name="pref_split_layout_never">Never</string>
     <string name="pref_split_layout_landscape">In landscape orientation</string>
     <string name="pref_split_layout_wide">On wide screens</string>
+
+    <string name="pref_layouts_add_keymap_builder">Keymap Builder</string>
+    <string name="keymap_builder_activity_title">Keymap Builder</string>
+    <string name="keymap_builder_name_hint">Keymap name</string>
+    <string name="keymap_builder_name_key_fixed">keymap_name</string>
+    <string name="keymap_builder_output_hint">Output text</string>
+    <string name="keymap_builder_keys_hint">Keys, comma separated</string>
+    <string name="keymap_builder_instructions">The first row is the keymap\'s name. Below it, each row maps one output to one or more keys. Use \\, to enter a literal comma as a key, e.g. \\,,cm for a comma key and a \"cm\" key that both produce the same output.</string>
+    <string name="keymap_builder_create">Create Keymap</string>
+    <string name="keymap_builder_remove_row">✕</string>
+    <string name="keymap_builder_error_name_required">Keymap name is required</string>
+    <string name="keymap_builder_error_no_mappings">Add at least one output with keys</string>
+    <string name="keymap_builder_saved">Keymap saved</string>
 </resources>

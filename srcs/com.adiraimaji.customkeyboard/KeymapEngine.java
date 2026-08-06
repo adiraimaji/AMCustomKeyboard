@@ -18,10 +18,6 @@ public class KeymapEngine
         return INSTANCE;
     }
 
-    /** Lets KeymapEngine keep some external word-tracking state (used for
-     suggestions) in sync with the edits it makes to the InputConnection,
-     the same way KeyEventHandler.replace_surrounding_text() keeps
-     CurrentlyTypedWord in sync with autocorrect edits. */
     public interface WordTrackerCallback
     {
         void remove_surrounding_text(int before, int after);
@@ -37,6 +33,13 @@ public class KeymapEngine
 
     private String loaded_name = null;
 
+    /** Whether the currently loaded keymap should also apply to text
+     produced by a directional swipe (as opposed to only center taps).
+     Controlled by the active layout's "swipekeymap" XML attribute -
+     see Keyboard2.refresh_keymap(). Irrelevant (and never consulted)
+     when no keymap is loaded at all. */
+    private boolean allowSwipe = false;
+
     private int selfEditCount = 0;
     private int lastConsumedSelfEditCount = 0;
 
@@ -44,10 +47,17 @@ public class KeymapEngine
     {
     }
 
-    public void load(Context context, String keymap_name)
+    /** [allow_swipe] mirrors the active layout's "swipekeymap" attribute -
+     pass true only when that attribute is present and "true". If the
+     layout has no "keymap" attribute at all, [keymap_name] will be
+     null and [allow_swipe]'s value has no effect (the map stays empty
+     and process() always returns false / lets the caller commit raw
+     text, regardless of swipe or not). */
+    public void load(Context context, String keymap_name, boolean allow_swipe)
     {
         pendingRaw = "";
         pendingOutputLen = 0;
+        allowSwipe = allow_swipe;
 
         if (keymap_name != null && keymap_name.equals(loaded_name))
             return;
@@ -85,17 +95,28 @@ public class KeymapEngine
     }
 
     @Deprecated
-    public void load(Context context)
+    public void load(Context context, String keymap_name)
     {
-        load(context, null);
+        load(context, keymap_name, false);
     }
 
-    /** [wordTracker] may be null if the caller doesn't need suggestions to
-     stay in sync (e.g. no dictionary loaded) - in that case only the
-     InputConnection is edited. */
-    public boolean process(InputConnection conn, String text, WordTrackerCallback wordTracker)
+    @Deprecated
+    public void load(Context context)
+    {
+        load(context, null, false);
+    }
+
+    /** [isSwipe] is true when [text] came from a directional swipe rather
+     than a center tap. If true and the active layout's "swipekeymap"
+     attribute isn't enabled, transliteration is skipped entirely for
+     this call and the caller should commit [text] as-is (same as if
+     no keymap were loaded at all). */
+    public boolean process(InputConnection conn, String text,
+                           WordTrackerCallback wordTracker, boolean isSwipe)
     {
         if (map.isEmpty())
+            return false;
+        if (isSwipe && !allowSwipe)
             return false;
 
         for (int i = 0; i < text.length(); i++)
@@ -105,9 +126,15 @@ public class KeymapEngine
     }
 
     @Deprecated
+    public boolean process(InputConnection conn, String text, WordTrackerCallback wordTracker)
+    {
+        return process(conn, text, wordTracker, false);
+    }
+
+    @Deprecated
     public boolean process(InputConnection conn, String text)
     {
-        return process(conn, text, null);
+        return process(conn, text, null, false);
     }
 
     private void handle_char(InputConnection conn, char c, WordTrackerCallback wt)
@@ -137,7 +164,6 @@ public class KeymapEngine
             return;
         }
 
-        // Can't extend further. Start fresh with this character alone.
         pendingRaw = "";
         pendingOutputLen = 0;
 
@@ -167,10 +193,6 @@ public class KeymapEngine
         }
     }
 
-    /** Deletes whatever was previously committed for the pending match (if
-     any) and commits [new_text] instead, mirroring the same delete+commit
-     onto [wordTracker] so suggestion tracking stays in sync with the
-     actual editor text. */
     private void replace_pending(InputConnection conn, WordTrackerCallback wt, String new_text)
     {
         selfEditCount++;

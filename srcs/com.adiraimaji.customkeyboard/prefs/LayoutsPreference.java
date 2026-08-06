@@ -3,6 +3,7 @@ package com.adiraimaji.customkeyboard.prefs;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
@@ -105,10 +106,10 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
   }
 
   /** Ensures every keymap saved in [KeymapManager] has a corresponding
-   [KeymapEntry] row here, adding any that are missing. This handles
-   keymaps saved before KeymapEntry rows existed, or through any path
-   other than the "Add new Keymap JSON" button, so the Settings list
-   always reflects everything KeymapManager actually has stored. */
+   [KeymapEntry] row here, adding any that are missing. Handles keymaps
+   saved before KeymapEntry rows existed, or through any path other
+   than the "Add new Keymap JSON" dialog (e.g. Keymap Builder), so the
+   Settings list always reflects everything KeymapManager has stored. */
   void sync_keymap_entries()
   {
     List<KeymapManager.StoredKeymap> stored = KeymapManager.load(getContext());
@@ -139,6 +140,16 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
 
     if (changed)
       set_values(_values, true);
+  }
+
+  /** Public entry point for re-syncing after returning from an activity
+   that may have added a keymap outside this preference's own dialogs
+   (e.g. KeymapBuilderActivity), since returning to SettingsActivity
+   only triggers onResume(), not onSetInitialValue(). See
+   SettingsActivity.onResume(). */
+  public void refresh_keymap_entries()
+  {
+    sync_keymap_entries();
   }
 
   String label_of_layout(Layout l)
@@ -195,8 +206,9 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     return prev_btn;
   }
 
-  /** Adds the standalone "Add new Keymap JSON" button, rendered right
-   after the regular "Add an alternate layout" button. */
+  /** Adds the standalone "Add new Keymap JSON" and "Keymap Builder"
+   buttons, rendered right after the regular "Add an alternate layout"
+   button (see reattach() below for exact ordering). */
   @Override
   List<Preference> on_attach_extra_buttons(List<Preference> prev_buttons)
   {
@@ -204,57 +216,8 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
       return prev_buttons;
     ArrayList<Preference> l = new ArrayList<Preference>();
     l.add(new AddKeymapButton(getContext()));
+    l.add(new AddKeymapBuilderButton(getContext()));
     return l;
-  }
-
-  /** Overrides the base class's flat rendering order (all items, then add
-   button, then extra buttons) with two visually separate groups:
-   Layout rows + their add button, followed by Keymap rows + their add
-   button. Indices passed to Item must stay the item's real position in
-   [_values] (not its position within its sub-group), since Item uses
-   that index to call change_item()/remove_item() on the real list.
-
-   IMPORTANT: _add_button and each entry in _extra_buttons are REUSED
-   across calls (see on_attach_add_button/on_attach_extra_buttons), so
-   their order must be reset to DEFAULT_ORDER right before re-adding
-   them each time - otherwise they keep whatever order number Android
-   auto-assigned the first time they were added, which becomes stale
-   (and too small) once more rows get added/removed later, causing
-   them to render above rows they should be below. */
-  @Override
-  void reattach()
-  {
-    if (!_attached)
-      return;
-    removeAll();
-
-    for (int i = 0; i < _values.size(); i++)
-    {
-      Layout v = _values.get(i);
-      if (!(v instanceof KeymapEntry))
-        addPreference(this.new Item(getContext(), i, v));
-    }
-
-    _add_button = on_attach_add_button(_add_button);
-    _add_button.setOrder(Preference.DEFAULT_ORDER);
-    addPreference(_add_button);
-
-    for (int i = 0; i < _values.size(); i++)
-    {
-      Layout v = _values.get(i);
-      if (v instanceof KeymapEntry)
-        addPreference(this.new Item(getContext(), i, v));
-    }
-
-    _extra_buttons = on_attach_extra_buttons(_extra_buttons);
-    if (_extra_buttons != null)
-    {
-      for (Preference p : _extra_buttons)
-      {
-        p.setOrder(Preference.DEFAULT_ORDER);
-        addPreference(p);
-      }
-    }
   }
 
   /** Keeps all Layout entries before all Keymap entries, regardless of the
@@ -301,9 +264,59 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
   @Override
   ListGroupPreference.Serializer<Layout> get_serializer() { return SERIALIZER; }
 
+  /** Overrides the base class's flat rendering order (all items, then add
+   button, then extra buttons) with two visually separate groups:
+   Layout rows + their add button, followed by Keymap rows + their
+   "Add new Keymap JSON" / "Keymap Builder" buttons. Indices passed to
+   Item must stay the item's real position in [_values] (not its
+   position within its sub-group), since Item uses that index to call
+   change_item()/remove_item() on the real list.
+
+   IMPORTANT: _add_button and each entry in _extra_buttons are REUSED
+   across calls, so their order must be reset to DEFAULT_ORDER right
+   before re-adding them each time - otherwise they keep whatever order
+   number Android auto-assigned the first time, which becomes stale
+   once rows are added/removed later. */
+  @Override
+  void reattach()
+  {
+    if (!_attached)
+      return;
+    removeAll();
+
+    for (int i = 0; i < _values.size(); i++)
+    {
+      Layout v = _values.get(i);
+      if (!(v instanceof KeymapEntry))
+        addPreference(this.new Item(getContext(), i, v));
+    }
+
+    _add_button = on_attach_add_button(_add_button);
+    _add_button.setOrder(Preference.DEFAULT_ORDER);
+    addPreference(_add_button);
+
+    for (int i = 0; i < _values.size(); i++)
+    {
+      Layout v = _values.get(i);
+      if (v instanceof KeymapEntry)
+        addPreference(this.new Item(getContext(), i, v));
+    }
+
+    _extra_buttons = on_attach_extra_buttons(_extra_buttons);
+    if (_extra_buttons != null)
+    {
+      for (Preference p : _extra_buttons)
+      {
+        p.setOrder(Preference.DEFAULT_ORDER);
+        addPreference(p);
+      }
+    }
+  }
+
   /** Dialog shown by "Add an alternate layout": built-in/system/custom
-   layouts only. Adding a keymap now has its own dedicated button (see
-   AddKeymapButton) and no longer appears in this dialog. */
+   layouts only. Adding a keymap has its own dedicated buttons (see
+   AddKeymapButton and AddKeymapBuilderButton) and no longer appears
+   in this dialog. */
   void select_dialog(final SelectionCallback callback)
   {
     ArrayList<String> entries = new ArrayList<>();
@@ -408,7 +421,7 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
   String read_initial_keymap()
   {
     return "{\n" +
-            "  \"keymap_name\": \"name\",\n" +
+            "  \"keymap_name\": \"\",\n" +
             "\n" +
             "  \"a\": \"அ\",\n" +
             "  \"aa\": \"ஆ\"\n" +
@@ -527,6 +540,29 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
 
         public boolean allow_remove() { return false; }
       }, read_initial_keymap(), null);
+    }
+  }
+
+  /** Launches KeymapBuilderActivity, a guided form for constructing a
+   keymap JSON instead of hand-writing it. The activity saves directly
+   to KeymapManager and finishes; the new row appears here once the
+   user returns, via SettingsActivity.onResume() calling
+   refresh_keymap_entries(). */
+  class AddKeymapBuilderButton extends Preference
+  {
+    public AddKeymapBuilderButton(Context ctx)
+    {
+      super(ctx);
+      setPersistent(false);
+      setLayoutResource(R.layout.pref_layouts_add_btn);
+      setTitle(R.string.pref_layouts_add_keymap_builder);
+    }
+
+    @Override
+    protected void onClick()
+    {
+      Intent intent = new Intent(getContext(), KeymapBuilderActivity.class);
+      getContext().startActivity(intent);
     }
   }
 
