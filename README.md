@@ -1,3 +1,21 @@
+# ⌨️ AMCustomKeyboard
+
+### 🤖 An Android Keyboard (Input Method) App
+
+**A powerful fork of Unexpected Keyboard (built from its downloaded source code) with a live transliteration engine, a guided Keymap Builder, independent key labels, and advanced layout customization.**
+
+[![Platform](https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white)](#)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](#)
+[![Release](https://img.shields.io/github/v/release/adiraimaji/AMCustomKeyboard?label=release&color=success)](../../releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/adiraimaji/AMCustomKeyboard/total.svg?color=orange)](../../releases)
+
+### 📥 [**Download the latest APK**](../../releases/latest)
+
+Grab the newest build from the **[Releases page](../../releases)** — no Play Store required.
+Just download the `.apk`, allow installs from unknown sources, and enable it as your system keyboard in **Settings → System → Languages & Input**.
+
+</div>
+
 ---
 
 ## 📱 Screenshots
@@ -198,7 +216,7 @@ The resulting behavior (with `swipekeymap` **not** set) is:
 By default, only center-tap output (`c` / `C`) is transliterated — swipe output always bypasses the keymap, even when one is set. The `swipekeymap` attribute lets a layout opt into transliterating swipe output too:
 
 ```xml
-<keyboard name="QWERTY (US)" script="latin" keymap="tamil" swipekeymap="true">
+<keyboard name="QWERTY (US)" script="latin" keymap="tamil" eswipekeymap="true">
 ```
 
 | `keymap` attribute | `swipekeymap` attribute | Behavior                                                                |
@@ -321,8 +339,8 @@ Tapping **"Add new Keymap JSON"**, or an existing **Keymap N: name** row, opens 
 ```
 
 - **Inline validation** — instead of a floating error balloon that covers the field, problems are shown as a small red warning line just above the button row. This includes:
-    - Missing or empty `keymap_name`.
-    - **Duplicate keys** — the JSON parser used for validation preserves every key occurrence (unlike a standard JSON parser, which silently keeps only the last value for a repeated key), so a duplicate key is always caught and reported instead of quietly discarding data.
+  - Missing or empty `keymap_name`.
+  - **Duplicate keys** — the JSON parser used for validation preserves every key occurrence (unlike a standard JSON parser, which silently keeps only the last value for a repeated key), so a duplicate key is always caught and reported instead of quietly discarding data.
 - **OK is blocked** while any error is present — it does not close the dialog or save until the text is valid.
 - **"Keymap Builder"** carries the dialog's *current, possibly-invalid* text (including any duplicate keys) directly into the guided builder, so nothing typed is ever lost while resolving a problem — duplicate keys land in their own separate rows automatically, ready to review in the builder's duplicate-solo view.
 - **Overwrite protection** — saving under a name that already belongs to a *different* stored keymap prompts for confirmation before replacing it. Saving under its own unchanged name (i.e. editing in place) never prompts.

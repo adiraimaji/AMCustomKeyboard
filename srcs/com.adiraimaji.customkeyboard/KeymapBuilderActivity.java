@@ -87,6 +87,17 @@ public class KeymapBuilderActivity extends Activity
      duplicate key, as of the last recompute_duplicates() call. */
     private Set<Integer> _last_duplicate_row_indices = new HashSet<>();
 
+    /** While "Dup only" is checked, governs which rows are VISIBLE.
+     Unlike _last_duplicate_row_indices (always live), this only ever
+     grows while checked - editing a row so it's no longer a
+     duplicate never removes it from here mid-edit. Only unchecking
+     and rechecking the box resets it down to the current
+     duplicates. */
+    private Set<Integer> _solo_frozen_indices = new HashSet<>();
+
+    private static final int ROW_DUPLICATE_BG = Color.rgb(255, 244, 179);
+    private static final int ROW_NORMAL_BG = Color.WHITE;
+
     private final List<Row> _rows = new ArrayList<>();
     private String _editing_original_name = null;
     private boolean _suppress_auto_add_row = false;
@@ -183,6 +194,10 @@ public class KeymapBuilderActivity extends Activity
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked)
             {
+                if (isChecked)
+                    _solo_frozen_indices = new HashSet<>(_last_duplicate_row_indices);
+                else
+                    _solo_frozen_indices.clear();
                 apply_row_filters();
             }
         });
@@ -325,6 +340,7 @@ public class KeymapBuilderActivity extends Activity
                 _rows.remove(row);
                 _rows_container.removeView(row_layout);
                 refresh_row_numbers();
+                _solo_frozen_indices.clear();
                 recompute_duplicates();
             }
         });
@@ -427,15 +443,36 @@ public class KeymapBuilderActivity extends Activity
                 duplicate_row_indices.addAll(e.getValue());
 
         _last_duplicate_row_indices = duplicate_row_indices;
+
+        // Background highlighting always reflects the LIVE duplicate
+        // state, independent of the "Dup only" filter or current
+        // visibility - a row turns yellow the instant it becomes a
+        // duplicate and white again the instant it's resolved.
+        for (int i = 0; i < _rows.size(); i++)
+        {
+            Row row = _rows.get(i);
+            row.container.setBackgroundColor(
+                    duplicate_row_indices.contains(i) ? ROW_DUPLICATE_BG : ROW_NORMAL_BG);
+        }
+
         boolean has_duplicates = !duplicate_row_indices.isEmpty();
         _solo_duplicates_checkbox.setEnabled(has_duplicates);
 
         if (!has_duplicates && _solo_duplicates_checkbox.isChecked())
-            _solo_duplicates_checkbox.setChecked(false); // Triggers listener -> apply_row_filters().
+        {
+            _solo_duplicates_checkbox.setChecked(false); // Triggers listener -> clears frozen set.
+        }
         else
+        {
+            // While checked, the VISIBLE set only ever grows (union) -
+            // never shrinks - so resolving a duplicate keeps its row
+            // visible (just turns it white above) instead of yanking it
+            // out of the list mid-edit.
+            if (_solo_duplicates_checkbox.isChecked())
+                _solo_frozen_indices.addAll(duplicate_row_indices);
             apply_row_filters();
+        }
     }
-
     /** Hides every row that isn't in _last_duplicate_row_indices when the
      checkbox is checked and enabled - without removing rows from
      _rows or renumbering, so row numbers stay stable regardless of
@@ -478,7 +515,9 @@ public class KeymapBuilderActivity extends Activity
             boolean is_trailing_empty_row =
                     (i == _rows.size() - 1) && output_text.isEmpty() && keys_text.isEmpty();
 
-            boolean passes_duplicate = !solo || _last_duplicate_row_indices.contains(i);
+            // Governed by the FROZEN set, not the live duplicate set -
+            // see recompute_duplicates().
+            boolean passes_duplicate = !solo || _solo_frozen_indices.contains(i);
 
             boolean passes_search = true;
             if (!search_terms.isEmpty())
