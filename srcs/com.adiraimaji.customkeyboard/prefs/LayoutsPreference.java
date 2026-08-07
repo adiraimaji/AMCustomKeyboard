@@ -14,7 +14,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+
 import com.adiraimaji.customkeyboard.*;
+import com.adiraimaji.customkeyboard.KeymapJsonUtils;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -105,36 +109,49 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     sync_keymap_entries();
   }
 
-  /** Ensures every keymap saved in [KeymapManager] has a corresponding
-   [KeymapEntry] row here, adding any that are missing. Handles keymaps
-   saved before KeymapEntry rows existed, or through any path other
-   than the "Add new Keymap JSON" dialog (e.g. Keymap Builder), so the
-   Settings list always reflects everything KeymapManager has stored. */
+  /** Keeps the Keymap rows in sync with what's actually in KeymapManager:
+   adds a row for any stored keymap that doesn't have one yet (e.g.
+   saved before KeymapEntry rows existed, or via Keymap Builder), and
+   removes any row whose keymap no longer exists (e.g. it was renamed
+   or deleted via KeymapBuilderActivity's edit flow). */
   void sync_keymap_entries()
   {
     List<KeymapManager.StoredKeymap> stored = KeymapManager.load(getContext());
-    if (stored.isEmpty())
-      return;
-
     boolean changed = false;
 
     for (KeymapManager.StoredKeymap k : stored)
     {
       boolean already_present = false;
-
       for (Layout v : _values)
-      {
         if (v instanceof KeymapEntry && ((KeymapEntry)v).name.equals(k.name))
         {
           already_present = true;
           break;
         }
-      }
-
       if (!already_present)
       {
         _values.add(new KeymapEntry(k.name));
         changed = true;
+      }
+    }
+
+    for (int i = _values.size() - 1; i >= 0; i--)
+    {
+      Layout v = _values.get(i);
+      if (v instanceof KeymapEntry)
+      {
+        boolean still_exists = false;
+        for (KeymapManager.StoredKeymap k : stored)
+          if (k.name.equals(((KeymapEntry)v).name))
+          {
+            still_exists = true;
+            break;
+          }
+        if (!still_exists)
+        {
+          _values.remove(i);
+          changed = true;
+        }
       }
     }
 
@@ -403,6 +420,8 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     }
   }
 
+
+
   /** The initial text for the custom layout entry box. The qwerty_us layout is
    a good default and contains a bit of documentation. */
   String read_initial_custom_layout()
@@ -428,11 +447,20 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
             "}";
   }
 
-  /** Shows the keymap JSON editor. [existing_name] is null when adding a
-   brand new keymap, or the current name when editing/removing one
-   already saved. On success, resolves [callback] with a lightweight
-   KeymapEntry reference - the full JSON itself lives in
-   KeymapManager's own storage, not in this preference's list. */
+  /** Shows the keymap JSON editor (the same line-numbered editor used for
+   Custom Layout, via KeymapEditDialog). [existing_name] is null when
+   adding a brand new keymap, or the current name when editing/removing
+   one already saved - in that case a "Keymap Builder" button is also
+   shown in the dialog's title. On success, resolves [callback] with a
+   lightweight KeymapEntry reference - the full JSON itself lives in
+   KeymapManager's own storage, not in this preference's list.
+
+   Before saving, checks whether [name] already belongs to a DIFFERENT
+   stored keymap (i.e. not the one being edited) and, if so, asks for
+   confirmation before overwriting it. This covers both entry points
+   that call this method: the "Add new Keymap JSON" button
+   (existing_name == null) and editing an existing "Keymap N: name"
+   row (existing_name != null). */
   void select_keymap(final SelectionCallback callback, String initialText,
                      final String existing_name)
   {
@@ -442,6 +470,8 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
             getContext(),
             initialText,
             allow_remove,
+            existing_name, // Only offer "Keymap Builder" when viewing/
+            // editing an existing keymap, not when adding.
             new KeymapEditDialog.Callback()
             {
               @Override
@@ -462,18 +492,35 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
                 try
                 {
                   JSONObject obj = new JSONObject(json);
-                  String name = obj.getString("keymap_name").trim();
+                  final String name = obj.getString("keymap_name").trim();
 
-                  // Renamed while editing: drop the old stored entry.
-                  if (existing_name != null && !existing_name.equals(name))
-                    KeymapManager.remove(getContext(), existing_name);
+                  KeymapManager.StoredKeymap existing =
+                          KeymapManager.find(getContext(), name);
+                  boolean overwriting_different_entry = existing != null
+                          && (existing_name == null || !existing_name.equals(name));
 
-                  KeymapManager.add(
-                          getContext(),
-                          new KeymapManager.StoredKeymap(name, json)
-                  );
+                  if (overwriting_different_entry)
+                  {
+                    final String final_name = name;
+                    final String final_json = json;
+                    ConfirmDialog.show(getContext(),
+                            getContext().getString(R.string.keymap_builder_overwrite_title),
+                            getContext().getString(R.string.keymap_builder_overwrite_message, name),
+                            getContext().getString(R.string.keymap_builder_overwrite_yes),
+                            getContext().getString(R.string.keymap_builder_overwrite_cancel),
+                            new ConfirmDialog.OnResult()
+                            {
+                              public void result(boolean positive)
+                              {
+                                if (positive)
+                                  finish_save_keymap(existing_name, final_name, final_json);
+                              }
+                            });
+                    return;
+                  }
 
-                  callback.select(new KeymapEntry(name));
+                  finish_save_keymap(existing_name, name, json);
+
                 }
                 catch (Exception e)
                 {
@@ -481,25 +528,92 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
                 }
               }
 
-              @Override
-              public String validate(String text)
-              {
-                try
-                {
-                  JSONObject obj = new JSONObject(text);
+//              @Override
+//              public String validate(String text)
+//              {
+//                try
+//                {
+//                  JSONObject obj = new JSONObject(text);
+//
+//                  if (!obj.has("keymap_name")
+//                          || obj.getString("keymap_name").trim().isEmpty())
+//                    return "\"keymap_name\" is required";
+//
+//                  return null;
+//                }
+//                catch (Exception e)
+//                {
+//                  return e.getMessage();
+//                }
+//              }
+@Override
+public String validate(String text)
+{
+  try
+  {
+    List<Map.Entry<String, String>> entries =
+            KeymapJsonUtils.parse_flat_object(text);
 
-                  if (!obj.has("keymap_name")
-                          || obj.getString("keymap_name").trim().isEmpty())
-                    return "\"keymap_name\" is required";
+    String name = null;
 
-                  return null;
-                }
-                catch (Exception e)
-                {
-                  return e.getMessage();
-                }
-              }
+    for (Map.Entry<String, String> e : entries)
+      if (e.getKey().equals("keymap_name"))
+        name = e.getValue();
+
+    if (name == null || name.trim().isEmpty())
+      return "\"keymap_name\" is required";
+
+    List<String> dup_keys = KeymapJsonUtils.find_duplicate_keys(entries);
+    if (!dup_keys.isEmpty())
+    {
+      StringBuilder b = new StringBuilder("Duplicate keys: ");
+      for (int i = 0; i < dup_keys.size(); i++)
+      {
+        if (i > 0) b.append(", ");
+        b.append(dup_keys.get(i));
+      }
+      return b.toString();
+    }
+
+    return null;
+  }
+  catch (KeymapJsonUtils.ParseError e)
+  {
+    return e.getMessage();
+  }
+}
             });
+  }
+
+  /** Persists [json] under [name] via KeymapManager, then ensures _values
+   contains exactly one KeymapEntry row for it - removing any row for
+   the old name (rename cleanup) and any PRE-EXISTING row that already
+   referenced [name] (the actual overwrite target), before inserting
+   the single correct row. Deliberately bypasses the generic
+   add_item/change_item callback machinery here, since that machinery
+   only knows "append" or "replace this one index" and has no concept
+   of keymap names needing to stay unique across the whole list - using
+   it directly for this case was what caused overwriting a keymap to
+   leave a duplicate row behind instead of replacing it. */
+  void finish_save_keymap(String existing_name, String name, String json)
+  {
+    if (existing_name != null && !existing_name.equals(name))
+      KeymapManager.remove(getContext(), existing_name);
+
+    KeymapManager.add(getContext(), new KeymapManager.StoredKeymap(name, json));
+
+    for (int i = _values.size() - 1; i >= 0; i--)
+    {
+      Layout v = _values.get(i);
+      if (v instanceof KeymapEntry)
+      {
+        String n = ((KeymapEntry)v).name;
+        if (n.equals(name) || (existing_name != null && n.equals(existing_name)))
+          _values.remove(i);
+      }
+    }
+
+    add_item(new KeymapEntry(name));
   }
 
   class LayoutsAddButton extends AddButton

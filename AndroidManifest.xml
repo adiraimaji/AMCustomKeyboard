@@ -35,7 +35,7 @@
     <activity
         android:name=".KeymapBuilderActivity"
         android:label="@string/keymap_builder_activity_title"
-        android:theme="@android:style/Theme.DeviceDefault.Light" />
+        android:windowSoftInputMode="adjustResize" />
   </application>
 
   <!-- To query enabled input methods for voice IME detection -->

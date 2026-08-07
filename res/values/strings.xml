@@ -175,15 +175,48 @@
     <string name="pref_split_layout_wide">On wide screens</string>
 
     <string name="pref_layouts_add_keymap_builder">Keymap Builder</string>
+    <string name="pref_keymap_edit">Edit Keymap</string>
+
     <string name="keymap_builder_activity_title">Keymap Builder</string>
+    <string name="keymap_builder_edit_title">Edit Keymap</string>
     <string name="keymap_builder_name_hint">Keymap name</string>
     <string name="keymap_builder_name_key_fixed">keymap_name</string>
     <string name="keymap_builder_output_hint">Output text</string>
     <string name="keymap_builder_keys_hint">Keys, comma separated</string>
-    <string name="keymap_builder_instructions">The first row is the keymap\'s name. Below it, each row maps one output to one or more keys. Use \\, to enter a literal comma as a key, e.g. \\,,cm for a comma key and a \"cm\" key that both produce the same output.</string>
+    <string name="keymap_builder_instructions">Use \\, to enter a literal comma as a key.</string>
     <string name="keymap_builder_create">Create Keymap</string>
-    <string name="keymap_builder_remove_row">✕</string>
     <string name="keymap_builder_error_name_required">Keymap name is required</string>
     <string name="keymap_builder_error_no_mappings">Add at least one output with keys</string>
+    <string name="keymap_builder_error_duplicate_key">Duplicate key \"%1$s\" - each key can only be used once.</string>
     <string name="keymap_builder_saved">Keymap saved</string>
+
+    <string name="keymap_builder_paste_title">Paste multiline text</string>
+    <string name="keymap_builder_paste_message">This text has multiple lines. Create a new row for each line, or paste it all into this field?</string>
+    <string name="keymap_builder_paste_split">New row per line</string>
+    <string name="keymap_builder_paste_single">Paste as one field</string>
+
+    <string name="keymap_builder_overwrite_title">Keymap already exists</string>
+    <string name="keymap_builder_overwrite_message">A keymap named \"%1$s\" already exists. Overwrite it?</string>
+    <string name="keymap_builder_overwrite_yes">Overwrite</string>
+    <string name="keymap_builder_overwrite_cancel">Cancel</string>
+    <string name="dialog_copy">Copy</string>
+    <string name="dialog_copied">Copied to clipboard</string>
+    <string name="pref_keymap_open_builder">Keymap Builder</string>
+
+    <string name="keymap_builder_output_column">Output</string>
+    <string name="keymap_builder_keys_column">Keys</string>
+
+    <string name="keymap_builder_solo_duplicates">Dup only</string>
+    <string name="keymap_builder_raw_json_title">Raw JSON</string>
+
+    <string name="keymap_builder_import_json_title">Import JSON</string>
+
+    <string name="keymap_builder_import_success">Imported</string>
+
+    <string name="keymap_builder_quick_add_button">Add row</string>
+    <string name="keymap_builder_quick_add_empty">Enter both output and keys</string>
+
+    <string name="keymap_builder_search_hint">Search, comma separated</string>
+    <string name="keymap_builder_search_output">Output</string>
+    <string name="keymap_builder_search_keys">Keys</string>
 </resources>
