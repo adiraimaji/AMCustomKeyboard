@@ -12,20 +12,26 @@ import android.text.InputType;
 import android.text.Layout;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import android.graphics.drawable.GradientDrawable;
 
+import com.adiraimaji.customkeyboard.prefs.KeymapManager;
+
+import java.util.ArrayList;
+import java.util.List;
+
 public class CustomLayoutEditDialog
 {
-  /** [on_open_in_builder], if non-null, receives the dialog's CURRENT text
-   at the moment the button is clicked (not the originally-loaded
-   text), so unsaved edits/duplicates the user is actively fixing are
-   carried over into the builder rather than lost. */
   public interface OpenInBuilder
   {
     void open(String current_text);
@@ -37,7 +43,6 @@ public class CustomLayoutEditDialog
     show(ctx, initial_text, allow_remove,
             R.string.pref_custom_layout_title,
             R.string.pref_layouts_remove_custom,
-            null,
             callback);
   }
 
@@ -48,19 +53,31 @@ public class CustomLayoutEditDialog
     show(ctx, initial_text, allow_remove, title_res, remove_label_res, null, callback);
   }
 
-  /** [on_open_in_builder], if non-null, adds a "Keymap Builder" button
-   below the input box, with a red inline error row shown to its left
-   whenever validate() reports a problem (replacing the floating error
-   balloon from EditText.setError(), which used to cover the field).
-   When [on_open_in_builder] is null, the same red error row is shown
-   directly below the input instead.
-
-   The OK button is blocked (does not dismiss, does not call
-   callback.select()) while validate() reports an error - the "Keymap
-   Builder" button is NOT blocked, since it exists specifically to let
-   the user resolve problems like duplicate keys there instead. */
+  /** Used by KeymapEditDialog. No keymap-selector row. */
   public static void show(Context ctx, String initial_text,
                           boolean allow_remove, int title_res, int remove_label_res,
+                          final OpenInBuilder on_open_in_builder,
+                          final Callback callback)
+  {
+    show(ctx, initial_text, allow_remove, title_res, remove_label_res, false, on_open_in_builder, callback);
+  }
+
+  /** Full version. [show_keymap_selector], if true, adds a Spinner
+   (listing every saved keymap plus "(No keymap)") and a "Swipe"
+   checkbox above the input box - used only for the Layout dialog
+   (LayoutsPreference.select_custom()), never for the Keymap JSON
+   dialog. Picking a keymap rewrites the "keymap"/"swipekeymap"
+   attributes on the input's <keyboard> tag; conversely, manually
+   typing those attributes updates the Spinner/checkbox to match -
+   both directions are guarded against re-entrant loops.
+
+   [on_open_in_builder], if non-null, adds a "Keymap Builder" button
+   below the input box, with an inline red error row next to it
+   (never both true - Layout and Keymap dialogs are mutually
+   exclusive uses of this method). */
+  public static void show(Context ctx, String initial_text,
+                          boolean allow_remove, int title_res, int remove_label_res,
+                          final boolean show_keymap_selector,
                           final OpenInBuilder on_open_in_builder,
                           final Callback callback)
   {
@@ -75,34 +92,221 @@ public class CustomLayoutEditDialog
 
     LinearLayout container = new LinearLayout(ctx);
     container.setOrientation(LinearLayout.VERTICAL);
-    container.addView(input_scroll, new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT));
 
     final TextView error_view = new TextView(ctx);
     error_view.setTextColor(Color.rgb(200, 40, 40));
     error_view.setTextSize(12f);
     error_view.setVisibility(View.GONE);
 
-    final Button[] builder_button_holder =
-            new Button[1];
+    final boolean[] syncing = { false };
+    final Spinner[] spinner_holder = { null };
+    final CheckBox[] swipe_cb_holder = { null };
+    final List<String> keymap_names = new ArrayList<>();
+    final EditText[] name_input_holder = { null };
+
+
+
+    if (show_keymap_selector)
+    {
+      keymap_names.add(ctx.getString(R.string.layout_keymap_none));
+      for (KeymapManager.StoredKeymap k : KeymapManager.load(ctx))
+        keymap_names.add(k.name);
+
+      // "Keyboard Attributes" card: bordered container with three
+      // labeled rows (Name / Keymap / Swipekeymap), each a TextView
+      // label on the left and its control on the right, matching the
+      // visual style used elsewhere (rounded corners, light border).
+      LinearLayout attrs_card = new LinearLayout(ctx);
+      attrs_card.setOrientation(LinearLayout.VERTICAL);
+      int card_pad = dp(ctx, 10);
+      attrs_card.setPadding(card_pad, card_pad, card_pad, card_pad);
+      GradientDrawable card_bg = new GradientDrawable();
+      card_bg.setShape(GradientDrawable.RECTANGLE);
+      card_bg.setColor(Color.rgb(248, 250, 252));
+      card_bg.setCornerRadius(dp(ctx, 10));
+      card_bg.setStroke(dp(ctx, 1), Color.rgb(224, 228, 233));
+      attrs_card.setBackground(card_bg);
+
+      TextView card_title = new TextView(ctx);
+      card_title.setText(R.string.layout_attributes_title);
+      card_title.setTextColor(Color.rgb(102, 112, 133));
+      card_title.setTextSize(11f);
+      card_title.setTypeface(null, android.graphics.Typeface.BOLD);
+      LinearLayout.LayoutParams card_title_params = new LinearLayout.LayoutParams(
+              LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+      card_title_params.bottomMargin = dp(ctx, 8);
+      attrs_card.addView(card_title, card_title_params);
+
+      int label_width = dp(ctx, 90);
+
+      // Name row.
+      LinearLayout name_row = new LinearLayout(ctx);
+      name_row.setOrientation(LinearLayout.HORIZONTAL);
+      name_row.setGravity(Gravity.CENTER_VERTICAL);
+      TextView name_label = new TextView(ctx);
+      name_label.setText(R.string.layout_name_label);
+      name_label.setTextColor(Color.rgb(71, 84, 103));
+      name_label.setTextSize(13f);
+      name_row.addView(name_label, new LinearLayout.LayoutParams(
+              label_width, LinearLayout.LayoutParams.WRAP_CONTENT));
+      final EditText name_input = new EditText(ctx);
+      name_input.setHint(R.string.layout_name_hint);
+      name_input.setSingleLine(true);
+      name_input.setTextSize(13f);
+      name_row.addView(name_input, new LinearLayout.LayoutParams(
+              0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+      LinearLayout.LayoutParams name_row_params = new LinearLayout.LayoutParams(
+              LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+      name_row_params.bottomMargin = dp(ctx, 8);
+      attrs_card.addView(name_row, name_row_params);
+      name_input_holder[0] = name_input;
+
+      // Keymap row.
+      LinearLayout keymap_row = new LinearLayout(ctx);
+      keymap_row.setOrientation(LinearLayout.HORIZONTAL);
+      keymap_row.setGravity(Gravity.CENTER_VERTICAL);
+      TextView keymap_label = new TextView(ctx);
+      keymap_label.setText(R.string.layout_keymap_label);
+      keymap_label.setTextColor(Color.rgb(71, 84, 103));
+      keymap_label.setTextSize(13f);
+      keymap_row.addView(keymap_label, new LinearLayout.LayoutParams(
+              label_width, LinearLayout.LayoutParams.WRAP_CONTENT));
+      final Spinner spinner = new Spinner(ctx);
+      ArrayAdapter<String> adapter = new ArrayAdapter<>(ctx,
+              android.R.layout.simple_spinner_item, keymap_names);
+      adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+      spinner.setAdapter(adapter);
+      keymap_row.addView(spinner, new LinearLayout.LayoutParams(
+              0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+      LinearLayout.LayoutParams keymap_row_params = new LinearLayout.LayoutParams(
+              LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+      keymap_row_params.bottomMargin = dp(ctx, 4);
+      attrs_card.addView(keymap_row, keymap_row_params);
+      spinner_holder[0] = spinner;
+
+      // Swipekeymap row.
+      LinearLayout swipe_row = new LinearLayout(ctx);
+      swipe_row.setOrientation(LinearLayout.HORIZONTAL);
+      swipe_row.setGravity(Gravity.CENTER_VERTICAL);
+      TextView swipe_label = new TextView(ctx);
+      swipe_label.setText(R.string.layout_swipekeymap_row_label);
+      swipe_label.setTextColor(Color.rgb(71, 84, 103));
+      swipe_label.setTextSize(13f);
+      swipe_row.addView(swipe_label, new LinearLayout.LayoutParams(
+              label_width, LinearLayout.LayoutParams.WRAP_CONTENT));
+      final CheckBox swipe_cb = new CheckBox(ctx);
+      swipe_row.addView(swipe_cb, new LinearLayout.LayoutParams(
+              LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+      attrs_card.addView(swipe_row, new LinearLayout.LayoutParams(
+              LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+      swipe_cb_holder[0] = swipe_cb;
+
+      LinearLayout.LayoutParams attrs_card_params = new LinearLayout.LayoutParams(
+              LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+      attrs_card_params.bottomMargin = dp(ctx, 10);
+      container.addView(attrs_card, attrs_card_params);
+
+      // Initial state from the XML, guarded so it doesn't immediately
+      // rewrite the text back at itself.
+      syncing[0] = true;
+      name_input.setText(KeymapXmlAttrUtils.get_name_attr(initial_text));
+      String current_keymap = KeymapXmlAttrUtils.get_keymap_attr(initial_text);
+      int initial_index = (current_keymap != null)
+              ? Math.max(0, keymap_names.indexOf(current_keymap)) : 0;
+      spinner.setSelection(initial_index);
+      swipe_cb.setChecked(KeymapXmlAttrUtils.get_swipekeymap_attr(initial_text));
+      swipe_cb.setEnabled(initial_index != 0);
+      syncing[0] = false;
+
+      name_input.addTextChangedListener(new android.text.TextWatcher()
+      {
+        public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+        public void onTextChanged(CharSequence s, int a, int b, int c) {}
+        public void afterTextChanged(android.text.Editable s)
+        {
+          if (syncing[0]) return;
+          syncing[0] = true;
+          String new_text = KeymapXmlAttrUtils.set_name_attr(
+                  input.getText().toString(), s.toString());
+          int cursor = input.getSelectionStart();
+          input.setText(new_text);
+          input.setSelection(Math.min(cursor, new_text.length()));
+          syncing[0] = false;
+          update_error_view(error_view, callback.validate(new_text));
+        }
+      });
+
+      spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener()
+      {
+        public void onItemSelected(AdapterView<?> parent, View view, int position, long id)
+        {
+          if (syncing[0]) return;
+          syncing[0] = true;
+          String new_text;
+          if (position == 0)
+          {
+            swipe_cb.setChecked(false);
+            swipe_cb.setEnabled(false);
+            new_text = KeymapXmlAttrUtils.remove_keymap_attrs(input.getText().toString());
+          }
+          else
+          {
+            swipe_cb.setEnabled(true);
+            String t = KeymapXmlAttrUtils.set_keymap_attr(
+                    input.getText().toString(), keymap_names.get(position));
+            t = KeymapXmlAttrUtils.set_swipekeymap_attr(t, swipe_cb.isChecked());
+            new_text = t;
+          }
+          input.setText(new_text);
+          input.setSelection(new_text.length());
+          syncing[0] = false;
+          update_error_view(error_view, callback.validate(new_text));
+        }
+        public void onNothingSelected(AdapterView<?> parent) {}
+      });
+
+      swipe_cb.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener()
+      {
+        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked)
+        {
+          if (syncing[0]) return;
+          syncing[0] = true;
+          String new_text = KeymapXmlAttrUtils.set_swipekeymap_attr(
+                  input.getText().toString(), isChecked);
+          input.setText(new_text);
+          input.setSelection(new_text.length());
+          syncing[0] = false;
+          update_error_view(error_view, callback.validate(new_text));
+        }
+      });
+    }
+
+    container.addView(input_scroll, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT));
+
+    final Button[] builder_button_holder = new Button[1];
 
     if (on_open_in_builder != null)
     {
+//      View divider = new View(ctx);
+//      divider.setBackgroundColor(Color.rgb(52, 120, 246));
+//      LinearLayout.LayoutParams divider_params = new LinearLayout.LayoutParams(
+//              LinearLayout.LayoutParams.MATCH_PARENT, dp(ctx, 2));
+//      divider_params.topMargin = dp(ctx, 4);
+//      divider_params.bottomMargin = dp(ctx, 8);
+//      container.addView(divider, divider_params);
 
       LinearLayout bottom_row = new LinearLayout(ctx);
       bottom_row.setOrientation(LinearLayout.HORIZONTAL);
+      bottom_row.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
 
-      bottom_row.setGravity(
-              Gravity.END | Gravity.CENTER_VERTICAL);
       LinearLayout.LayoutParams error_params = new LinearLayout.LayoutParams(
               0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
       bottom_row.addView(error_view, error_params);
 
       Button builder_btn = new Button(ctx);
-
       builder_button_holder[0] = builder_btn;
-
       builder_btn.setText(R.string.pref_keymap_open_builder);
       builder_btn.setTextColor(Color.rgb(52, 120, 246));
       builder_btn.setBackgroundColor(Color.TRANSPARENT);
@@ -113,15 +317,6 @@ public class CustomLayoutEditDialog
       container.addView(bottom_row, new LinearLayout.LayoutParams(
               LinearLayout.LayoutParams.MATCH_PARENT,
               LinearLayout.LayoutParams.WRAP_CONTENT));
-
-//      builder_btn.setOnClickListener(new View.OnClickListener()
-//      {
-//        public void onClick(View v)
-//        {
-//          String current_text = input.getText().toString();
-//          on_open_in_builder.open(current_text);
-//        }
-//      });
     }
     else
     {
@@ -142,7 +337,7 @@ public class CustomLayoutEditDialog
     AlertDialog.Builder builder = new AlertDialog.Builder(ctx)
             .setTitle(title_res)
             .setView(dialog_margin_container)
-            .setPositiveButton(android.R.string.ok, null) // Overridden below.
+            .setPositiveButton(android.R.string.ok, null)
             .setNegativeButton(android.R.string.cancel, null);
     if (allow_remove)
       builder.setNeutralButton(remove_label_res, new DialogInterface.OnClickListener(){
@@ -154,29 +349,19 @@ public class CustomLayoutEditDialog
 
     final AlertDialog dialog = builder.create();
 
-    if (on_open_in_builder != null
-            && builder_button_holder[0] != null)
+    if (on_open_in_builder != null && builder_button_holder[0] != null)
     {
-      final Button builder_btn =
-              builder_button_holder[0];
-
-      builder_btn.setOnClickListener(
-              new View.OnClickListener()
-              {
-                @Override
-                public void onClick(View v)
-                {
-                  String current_text =
-                          input.getText().toString();
-
-                  dialog.dismiss();
-
-                  on_open_in_builder.open(current_text);
-                }
-              });
+      builder_button_holder[0].setOnClickListener(new View.OnClickListener()
+      {
+        public void onClick(View v)
+        {
+          String current_text = input.getText().toString();
+          dialog.dismiss();
+          on_open_in_builder.open(current_text);
+        }
+      });
     }
 
-    // Show the current validation state immediately, before any typing.
     update_error_view(error_view, callback.validate(initial_text));
 
     dialog.setOnShowListener(new DialogInterface.OnShowListener()
@@ -205,7 +390,21 @@ public class CustomLayoutEditDialog
     {
       public void on_change()
       {
-        update_error_view(error_view, callback.validate(input.getText().toString()));
+        String text = input.getText().toString();
+        update_error_view(error_view, callback.validate(text));
+
+        if (show_keymap_selector && spinner_holder[0] != null && !syncing[0])
+        {
+          syncing[0] = true;
+          if (name_input_holder[0] != null)
+            name_input_holder[0].setText(KeymapXmlAttrUtils.get_name_attr(text));
+          String cur = KeymapXmlAttrUtils.get_keymap_attr(text);
+          int idx = (cur != null) ? Math.max(0, keymap_names.indexOf(cur)) : 0;
+          spinner_holder[0].setSelection(idx);
+          swipe_cb_holder[0].setChecked(KeymapXmlAttrUtils.get_swipekeymap_attr(text));
+          swipe_cb_holder[0].setEnabled(idx != 0);
+          syncing[0] = false;
+        }
       }
     });
     dialog.show();

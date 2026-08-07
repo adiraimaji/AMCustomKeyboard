@@ -59,9 +59,11 @@ public class KeymapEngine
         pendingOutputLen = 0;
         allowSwipe = allow_swipe;
 
-        if (keymap_name != null && keymap_name.equals(loaded_name))
-            return;
-
+        // Always rebuild from KeymapManager instead of trusting a
+        // name-based cache - the stored JSON can be edited or deleted at
+        // any time via Settings/Keymap Builder, and that must take
+        // effect the next time a layout referencing it becomes active
+        // (see Keyboard2.refresh_keymap()), not just the first time.
         map.clear();
         prefixSet.clear();
         strictPrefixSet.clear();
@@ -73,7 +75,7 @@ public class KeymapEngine
         Keymap keymap = KeymapManager.loadKeymap(context, keymap_name);
 
         if (keymap == null)
-            return;
+            return; // Deleted or invalid - falls back to no transliteration.
 
         Iterator<String> it = keymap.keys();
 

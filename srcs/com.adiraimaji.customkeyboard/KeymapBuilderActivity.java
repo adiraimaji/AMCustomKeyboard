@@ -40,6 +40,8 @@ import android.widget.RadioButton;
 import android.widget.RadioGroup;
 
 
+import com.adiraimaji.customkeyboard.prefs.LayoutsPreference;
+
 /** A guided editor for building a keymap JSON without hand-writing it.
 
  Row 0 is a permanent, non-removable "name row": a fixed label reading
@@ -1056,8 +1058,13 @@ public class KeymapBuilderActivity extends Activity
     {
         String json = build_keymap_json(entries);
         KeymapManager.add(this, new KeymapManager.StoredKeymap(name, json));
+
         if (_editing_original_name != null && !_editing_original_name.equals(name))
+        {
             KeymapManager.remove(this, _editing_original_name);
+            LayoutsPreference.rename_keymap_references_in_preferences(this, _editing_original_name, name);
+        }
+
         Toast.makeText(this, R.string.keymap_builder_saved, Toast.LENGTH_SHORT).show();
         setResult(RESULT_OK);
         finish();

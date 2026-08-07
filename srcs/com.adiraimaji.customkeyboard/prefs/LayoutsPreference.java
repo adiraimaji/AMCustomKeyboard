@@ -15,10 +15,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-
 import com.adiraimaji.customkeyboard.*;
-import com.adiraimaji.customkeyboard.KeymapJsonUtils;
-
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -30,7 +27,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
   static final ListGroupPreference.Serializer<Layout> SERIALIZER =
           new Serializer();
 
-  /** Text displayed for each layout in the dialog list. */
   String[] _layout_display_names;
 
   public LayoutsPreference(Context ctx, AttributeSet attrs)
@@ -41,11 +37,9 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     _layout_display_names = res.getStringArray(R.array.pref_layout_entries);
   }
 
-  /** Obtained from [res/values/layouts.xml]. */
   static List<String> _unsafe_layout_ids_str = null;
   static TypedArray _unsafe_layout_ids_res = null;
 
-  /** Layout internal names. Contains "system" and "custom". */
   public static List<String> get_layout_names(Resources res)
   {
     if (_unsafe_layout_ids_str == null)
@@ -54,7 +48,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     return _unsafe_layout_ids_str;
   }
 
-  /** Layout resource id for a layout name. [-1] if not found. */
   public static int layout_id_of_name(Resources res, String name)
   {
     if (_unsafe_layout_ids_res == null)
@@ -65,9 +58,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     return -1;
   }
 
-  /** [null] for the "system" layout. KeymapEntry items are skipped - they
-   are references to a saved keymap JSON (see KeymapManager), not
-   actual keyboard layouts, and must never end up in Config.layouts. */
   public static List<KeyboardData> load_from_preferences(Resources res, SharedPreferences prefs)
   {
     List<KeyboardData> layouts = new ArrayList<KeyboardData>();
@@ -79,13 +69,12 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
         layouts.add(layout_of_string(res, ((NamedLayout)l).name));
       else if (l instanceof CustomLayout)
         layouts.add(((CustomLayout)l).parsed);
-      else // instanceof SystemLayout
+      else
         layouts.add(null);
     }
     return layouts;
   }
 
-  /** Does not call [prefs.commit()]. */
   public static void save_to_preferences(SharedPreferences.Editor prefs, List<Layout> items)
   {
     save_to_preferences(KEY, prefs, items, SERIALIZER);
@@ -96,7 +85,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     int id = layout_id_of_name(res, name);
     if (id > 0)
       return KeyboardData.load(res, id);
-    // Might happen when the app is downgraded, return the system layout.
     return null;
   }
 
@@ -109,11 +97,8 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     sync_keymap_entries();
   }
 
-  /** Keeps the Keymap rows in sync with what's actually in KeymapManager:
-   adds a row for any stored keymap that doesn't have one yet (e.g.
-   saved before KeymapEntry rows existed, or via Keymap Builder), and
-   removes any row whose keymap no longer exists (e.g. it was renamed
-   or deleted via KeymapBuilderActivity's edit flow). */
+  /** Adds a row for any stored keymap without one yet, and removes any
+   row whose keymap no longer exists (renamed/deleted). */
   void sync_keymap_entries()
   {
     List<KeymapManager.StoredKeymap> stored = KeymapManager.load(getContext());
@@ -159,13 +144,22 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
       set_values(_values, true);
   }
 
-  /** Public entry point for re-syncing after returning from an activity
-   that may have added a keymap outside this preference's own dialogs
-   (e.g. KeymapBuilderActivity), since returning to SettingsActivity
-   only triggers onResume(), not onSetInitialValue(). See
-   SettingsActivity.onResume(). */
-  public void refresh_keymap_entries()
+  /** Reloads _values fresh from SharedPreferences, discarding any
+   in-memory state, then re-syncs keymap rows. Called by
+   SettingsActivity.onResume() so a paused Settings screen picks up
+   writes made directly to SharedPreferences elsewhere (e.g. keymap
+   rename propagation from KeymapBuilderActivity, a separate
+   Activity) instead of later clobbering them with stale in-memory
+   data. */
+  public void reload_from_preferences_and_sync()
   {
+    String input = getPersistedString(null);
+    if (input != null)
+    {
+      List<Layout> values = load_from_string(input, get_serializer());
+      if (values != null)
+        set_values(values, false);
+    }
     sync_keymap_entries();
   }
 
@@ -179,21 +173,16 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     }
     else if (l instanceof CustomLayout)
     {
-      // Use the layout's name if possible
       CustomLayout cl = (CustomLayout)l;
-      if (cl.parsed != null && cl.parsed.name != null
-              && !cl.parsed.name.equals(""))
+      if (cl.parsed != null && cl.parsed.name != null && !cl.parsed.name.equals(""))
         return cl.parsed.name;
       else
         return getContext().getString(R.string.pref_layout_e_custom);
     }
-    else // instanceof SystemLayout
+    else
       return getContext().getString(R.string.pref_layout_e_system);
   }
 
-  /** Layout rows and Keymap rows are numbered independently, e.g.
-   "Layout 1", "Layout 2", "Keymap 1", "Keymap 2", even though they all
-   live in the same underlying list. */
   @Override
   String label_of_value(Layout value, int i)
   {
@@ -223,9 +212,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     return prev_btn;
   }
 
-  /** Adds the standalone "Add new Keymap JSON" and "Keymap Builder"
-   buttons, rendered right after the regular "Add an alternate layout"
-   button (see reattach() below for exact ordering). */
   @Override
   List<Preference> on_attach_extra_buttons(List<Preference> prev_buttons)
   {
@@ -237,10 +223,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     return l;
   }
 
-  /** Keeps all Layout entries before all Keymap entries, regardless of the
-   order the user added them in, so the rendered list always reads
-   "Layout 1, Layout 2, ..., Keymap 1, Keymap 2, ..." with the add
-   buttons after everything. */
   @Override
   void add_item(Layout v)
   {
@@ -261,9 +243,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     set_values(_values, true);
   }
 
-  /** KeymapEntry rows are edited/removed only via their own dialog (like
-   CustomLayout), never via the small inline remove icon. Real layouts
-   also always require at least one to remain. */
   @Override
   boolean should_allow_remove_item(Layout value)
   {
@@ -281,19 +260,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
   @Override
   ListGroupPreference.Serializer<Layout> get_serializer() { return SERIALIZER; }
 
-  /** Overrides the base class's flat rendering order (all items, then add
-   button, then extra buttons) with two visually separate groups:
-   Layout rows + their add button, followed by Keymap rows + their
-   "Add new Keymap JSON" / "Keymap Builder" buttons. Indices passed to
-   Item must stay the item's real position in [_values] (not its
-   position within its sub-group), since Item uses that index to call
-   change_item()/remove_item() on the real list.
-
-   IMPORTANT: _add_button and each entry in _extra_buttons are REUSED
-   across calls, so their order must be reset to DEFAULT_ORDER right
-   before re-adding them each time - otherwise they keep whatever order
-   number Android auto-assigned the first time, which becomes stale
-   once rows are added/removed later. */
   @Override
   void reattach()
   {
@@ -330,20 +296,13 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     }
   }
 
-  /** Dialog shown by "Add an alternate layout": built-in/system/custom
-   layouts only. Adding a keymap has its own dedicated buttons (see
-   AddKeymapButton and AddKeymapBuilderButton) and no longer appears
-   in this dialog. */
   void select_dialog(final SelectionCallback callback)
   {
     ArrayList<String> entries = new ArrayList<>();
     Collections.addAll(entries, _layout_display_names);
 
     ArrayAdapter<String> adapter =
-            new ArrayAdapter<>(
-                    getContext(),
-                    android.R.layout.simple_list_item_1,
-                    entries);
+            new ArrayAdapter<>(getContext(), android.R.layout.simple_list_item_1, entries);
 
     new AlertDialog.Builder(getContext())
             .setAdapter(adapter, new DialogInterface.OnClickListener(){
@@ -367,12 +326,12 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
             .show();
   }
 
-  /** Dialog for specifying a custom layout. [initial_text] is the layout
-   description when modifying a layout. */
   void select_custom(final SelectionCallback callback, String initial_text)
   {
     boolean allow_remove = callback.allow_remove() && _values.size() > 1;
     CustomLayoutEditDialog.show(getContext(), initial_text, allow_remove,
+            R.string.pref_custom_layout_title, R.string.pref_layouts_remove_custom,
+            true, null,
             new CustomLayoutEditDialog.Callback()
             {
               public void select(String text)
@@ -388,7 +347,7 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
                 try
                 {
                   KeyboardData.load_string_exn(text);
-                  return null; // Validation passed
+                  return null;
                 }
                 catch (Exception e)
                 {
@@ -398,8 +357,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
             });
   }
 
-  /** Called when modifying an existing row. Custom layouts and keymaps
-   each get their own editor; everything else re-opens the picker. */
   @Override
   void select(final SelectionCallback callback, Layout prev_layout)
   {
@@ -420,10 +377,6 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     }
   }
 
-
-
-  /** The initial text for the custom layout entry box. The qwerty_us layout is
-   a good default and contains a bit of documentation. */
   String read_initial_custom_layout()
   {
     try
@@ -439,28 +392,9 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
 
   String read_initial_keymap()
   {
-    return "{\n" +
-            "  \"keymap_name\": \"\",\n" +
-            "\n" +
-            "  \"a\": \"அ\",\n" +
-            "  \"aa\": \"ஆ\"\n" +
-            "}";
+    return "{\n  \"keymap_name\": \"\",\n\n  \"a\": \"\u0b85\",\n  \"aa\": \"\u0b86\"\n}";
   }
 
-  /** Shows the keymap JSON editor (the same line-numbered editor used for
-   Custom Layout, via KeymapEditDialog). [existing_name] is null when
-   adding a brand new keymap, or the current name when editing/removing
-   one already saved - in that case a "Keymap Builder" button is also
-   shown in the dialog's title. On success, resolves [callback] with a
-   lightweight KeymapEntry reference - the full JSON itself lives in
-   KeymapManager's own storage, not in this preference's list.
-
-   Before saving, checks whether [name] already belongs to a DIFFERENT
-   stored keymap (i.e. not the one being edited) and, if so, asks for
-   confirmation before overwriting it. This covers both entry points
-   that call this method: the "Add new Keymap JSON" button
-   (existing_name == null) and editing an existing "Keymap N: name"
-   row (existing_name != null). */
   void select_keymap(final SelectionCallback callback, String initialText,
                      final String existing_name)
   {
@@ -470,8 +404,7 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
             getContext(),
             initialText,
             allow_remove,
-            existing_name, // Only offer "Keymap Builder" when viewing/
-            // editing an existing keymap, not when adding.
+            existing_name,
             new KeymapEditDialog.Callback()
             {
               @Override
@@ -479,12 +412,36 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
               {
                 if (json == null)
                 {
-                  // Cancelled (add flow: no-op), or "Remove" pressed while
-                  // editing an existing keymap.
                   if (existing_name != null)
                   {
-                    KeymapManager.remove(getContext(), existing_name);
-                    callback.select(null);
+                    int ref_count = count_keymap_references(existing_name);
+                    if (ref_count > 0)
+                    {
+                      final String name_to_remove = existing_name;
+                      ConfirmDialog.show(getContext(),
+                              getContext().getString(R.string.keymap_delete_in_use_title),
+                              getContext().getString(R.string.keymap_delete_in_use_message,
+                                      name_to_remove, ref_count),
+                              getContext().getString(R.string.keymap_delete_in_use_confirm),
+                              getContext().getString(android.R.string.cancel),
+                              new ConfirmDialog.OnResult()
+                              {
+                                public void result(boolean positive)
+                                {
+                                  if (positive)
+                                  {
+                                    clear_keymap_references(name_to_remove);
+                                    KeymapManager.remove(getContext(), name_to_remove);
+                                    callback.select(null);
+                                  }
+                                }
+                              });
+                    }
+                    else
+                    {
+                      KeymapManager.remove(getContext(), existing_name);
+                      callback.select(null);
+                    }
                   }
                   return;
                 }
@@ -494,14 +451,12 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
                   JSONObject obj = new JSONObject(json);
                   final String name = obj.getString("keymap_name").trim();
 
-                  KeymapManager.StoredKeymap existing =
-                          KeymapManager.find(getContext(), name);
+                  KeymapManager.StoredKeymap existing = KeymapManager.find(getContext(), name);
                   boolean overwriting_different_entry = existing != null
                           && (existing_name == null || !existing_name.equals(name));
 
                   if (overwriting_different_entry)
                   {
-                    final String final_name = name;
                     final String final_json = json;
                     ConfirmDialog.show(getContext(),
                             getContext().getString(R.string.keymap_builder_overwrite_title),
@@ -513,14 +468,13 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
                               public void result(boolean positive)
                               {
                                 if (positive)
-                                  finish_save_keymap(existing_name, final_name, final_json);
+                                  finish_save_keymap(existing_name, name, final_json);
                               }
                             });
                     return;
                   }
 
                   finish_save_keymap(existing_name, name, json);
-
                 }
                 catch (Exception e)
                 {
@@ -528,73 +482,50 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
                 }
               }
 
-//              @Override
-//              public String validate(String text)
-//              {
-//                try
-//                {
-//                  JSONObject obj = new JSONObject(text);
-//
-//                  if (!obj.has("keymap_name")
-//                          || obj.getString("keymap_name").trim().isEmpty())
-//                    return "\"keymap_name\" is required";
-//
-//                  return null;
-//                }
-//                catch (Exception e)
-//                {
-//                  return e.getMessage();
-//                }
-//              }
-@Override
-public String validate(String text)
-{
-  try
-  {
-    List<Map.Entry<String, String>> entries =
-            KeymapJsonUtils.parse_flat_object(text);
+              @Override
+              public String validate(String text)
+              {
+                try
+                {
+                  List<Map.Entry<String, String>> entries =
+                          KeymapJsonUtils.parse_flat_object(text);
 
-    String name = null;
+                  String name = null;
+                  for (Map.Entry<String, String> e : entries)
+                    if (e.getKey().equals("keymap_name"))
+                      name = e.getValue();
 
-    for (Map.Entry<String, String> e : entries)
-      if (e.getKey().equals("keymap_name"))
-        name = e.getValue();
+                  if (name == null || name.trim().isEmpty())
+                    return "\"keymap_name\" is required";
 
-    if (name == null || name.trim().isEmpty())
-      return "\"keymap_name\" is required";
+                  List<String> dup_keys = KeymapJsonUtils.find_duplicate_keys(entries);
+                  if (!dup_keys.isEmpty())
+                  {
+                    StringBuilder b = new StringBuilder("Duplicate keys: ");
+                    for (int i = 0; i < dup_keys.size(); i++)
+                    {
+                      if (i > 0) b.append(", ");
+                      b.append(dup_keys.get(i));
+                    }
+                    return b.toString();
+                  }
 
-    List<String> dup_keys = KeymapJsonUtils.find_duplicate_keys(entries);
-    if (!dup_keys.isEmpty())
-    {
-      StringBuilder b = new StringBuilder("Duplicate keys: ");
-      for (int i = 0; i < dup_keys.size(); i++)
-      {
-        if (i > 0) b.append(", ");
-        b.append(dup_keys.get(i));
-      }
-      return b.toString();
-    }
-
-    return null;
-  }
-  catch (KeymapJsonUtils.ParseError e)
-  {
-    return e.getMessage();
-  }
-}
+                  return null;
+                }
+                catch (KeymapJsonUtils.ParseError e)
+                {
+                  return e.getMessage();
+                }
+              }
             });
   }
 
-  /** Persists [json] under [name] via KeymapManager, then ensures _values
-   contains exactly one KeymapEntry row for it - removing any row for
-   the old name (rename cleanup) and any PRE-EXISTING row that already
-   referenced [name] (the actual overwrite target), before inserting
-   the single correct row. Deliberately bypasses the generic
-   add_item/change_item callback machinery here, since that machinery
-   only knows "append" or "replace this one index" and has no concept
-   of keymap names needing to stay unique across the whole list - using
-   it directly for this case was what caused overwriting a keymap to
-   leave a duplicate row behind instead of replacing it. */
+  /** Persists [json] under [name], ensures _values has exactly one
+   KeymapEntry row for it (removing any row for the old name on
+   rename, and any PRE-EXISTING row that already had [name] on
+   overwrite - deliberately bypassing add_item/change_item, which
+   only know "append" or "replace one index" and previously caused
+   overwrite to leave a duplicate row instead of replacing it). */
   void finish_save_keymap(String existing_name, String name, String json)
   {
     if (existing_name != null && !existing_name.equals(name))
@@ -616,6 +547,78 @@ public String validate(String text)
     add_item(new KeymapEntry(name));
   }
 
+  /** How many CustomLayout entries in _values reference [keymap_name]
+   via their keymap="..." XML attribute. */
+  int count_keymap_references(String keymap_name)
+  {
+    int count = 0;
+    for (Layout v : _values)
+      if (v instanceof CustomLayout
+              && keymap_name.equals(KeymapXmlAttrUtils.get_keymap_attr(((CustomLayout)v).xml)))
+        count++;
+    return count;
+  }
+
+  /** Strips the keymap/swipekeymap attributes from every CustomLayout in
+   _values that references [keymap_name], and persists the change. */
+  void clear_keymap_references(String keymap_name)
+  {
+    boolean changed = false;
+    for (int i = 0; i < _values.size(); i++)
+    {
+      Layout v = _values.get(i);
+      if (v instanceof CustomLayout)
+      {
+        CustomLayout cl = (CustomLayout)v;
+        if (keymap_name.equals(KeymapXmlAttrUtils.get_keymap_attr(cl.xml)))
+        {
+          _values.set(i, CustomLayout.parse(KeymapXmlAttrUtils.remove_keymap_attrs(cl.xml)));
+          changed = true;
+        }
+      }
+    }
+    if (changed)
+      set_values(_values, true);
+  }
+
+  /** Renames every keymap="..." reference from [old_name] to [new_name]
+   across stored CustomLayout entries, reading/writing
+   SharedPreferences directly. Used from KeymapBuilderActivity, a
+   separate Activity with no live LayoutsPreference instance to route
+   the change through the normal in-memory _values/set_values path.
+   See reload_from_preferences_and_sync() for how a paused Settings
+   screen picks this up afterward. Returns the number updated. */
+  public static int rename_keymap_references_in_preferences(Context ctx, String old_name, String new_name)
+  {
+    SharedPreferences prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(ctx);
+    String raw = prefs.getString(KEY, null);
+    if (raw == null)
+      return 0;
+    List<Layout> values = load_from_string(raw, SERIALIZER);
+    if (values == null)
+      return 0;
+
+    int updated = 0;
+    for (int i = 0; i < values.size(); i++)
+    {
+      Layout v = values.get(i);
+      if (v instanceof CustomLayout)
+      {
+        CustomLayout cl = (CustomLayout)v;
+        if (old_name.equals(KeymapXmlAttrUtils.get_keymap_attr(cl.xml)))
+        {
+          values.set(i, CustomLayout.parse(KeymapXmlAttrUtils.set_keymap_attr(cl.xml, new_name)));
+          updated++;
+        }
+      }
+    }
+
+    if (updated > 0)
+      prefs.edit().putString(KEY, save_to_string(values, SERIALIZER)).apply();
+
+    return updated;
+  }
+
   class LayoutsAddButton extends AddButton
   {
     public LayoutsAddButton(Context ctx)
@@ -626,11 +629,6 @@ public String validate(String text)
     }
   }
 
-  /** Standalone button that opens the keymap JSON editor directly, without
-   going through the layout picker dialog. Not backed by an item in
-   [_values] the way AddButton's onClick() implies (add_item is called
-   manually from select_keymap's callback), so this extends [Preference]
-   directly rather than [AddButton]. */
   class AddKeymapButton extends Preference
   {
     public AddKeymapButton(Context ctx)
@@ -657,11 +655,6 @@ public String validate(String text)
     }
   }
 
-  /** Launches KeymapBuilderActivity, a guided form for constructing a
-   keymap JSON instead of hand-writing it. The activity saves directly
-   to KeymapManager and finishes; the new row appears here once the
-   user returns, via SettingsActivity.onResume() calling
-   refresh_keymap_entries(). */
   class AddKeymapBuilderButton extends Preference
   {
     public AddKeymapBuilderButton(Context ctx)
@@ -680,8 +673,6 @@ public String validate(String text)
     }
   }
 
-  /** A layout selected by the user. The implementations are
-   [NamedLayout], [SystemLayout], [CustomLayout] and [KeymapEntry]. */
   public interface Layout {}
 
   public static final class SystemLayout implements Layout
@@ -689,18 +680,15 @@ public String validate(String text)
     public SystemLayout() {}
   }
 
-  /** The name of a layout defined in [srcs/layouts]. */
   public static final class NamedLayout implements Layout
   {
     public final String name;
     public NamedLayout(String n) { name = n; }
   }
 
-  /** The XML description of a custom layout. */
   public static final class CustomLayout implements Layout
   {
     public final String xml;
-    /** Might be null. */
     public final KeyboardData parsed;
     public CustomLayout(String xml_, KeyboardData k) { xml = xml_; parsed = k; }
     public static CustomLayout parse(String xml)
@@ -712,18 +700,12 @@ public String validate(String text)
     }
   }
 
-  /** A lightweight reference to a keymap saved via [KeymapManager], kept in
-   the same list as layouts so it renders as its own row in Settings
-   (grouped after all Layout rows - see add_item()). It never
-   contributes to Config.layouts - see load_from_preferences(). */
   public static final class KeymapEntry implements Layout
   {
     public final String name;
     public KeymapEntry(String n) { name = n; }
   }
 
-  /** Named layouts are serialized to strings, custom layouts and keymap
-   references to JSON objects with a [kind] field. */
   public static class Serializer implements ListGroupPreference.Serializer<Layout>
   {
     public Layout load_item(Object obj) throws JSONException
@@ -749,11 +731,9 @@ public String validate(String text)
       if (v instanceof NamedLayout)
         return ((NamedLayout)v).name;
       if (v instanceof CustomLayout)
-        return new JSONObject().put("kind", "custom")
-                .put("xml", ((CustomLayout)v).xml);
+        return new JSONObject().put("kind", "custom").put("xml", ((CustomLayout)v).xml);
       if (v instanceof KeymapEntry)
-        return new JSONObject().put("kind", "keymap")
-                .put("name", ((KeymapEntry)v).name);
+        return new JSONObject().put("kind", "keymap").put("name", ((KeymapEntry)v).name);
       return new JSONObject().put("kind", "system");
     }
   }

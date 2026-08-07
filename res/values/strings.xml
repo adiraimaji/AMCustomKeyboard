@@ -219,4 +219,16 @@
     <string name="keymap_builder_search_hint">Search, comma separated</string>
     <string name="keymap_builder_search_output">Output</string>
     <string name="keymap_builder_search_keys">Keys</string>
+
+    <string name="layout_keymap_none">(No keymap)</string>
+    <string name="layout_swipekeymap_label">Swipe</string>
+    <string name="keymap_delete_in_use_title">Keymap in use</string>
+    <string name="keymap_delete_in_use_message">"%1$s" is used by %2$d layout(s). Deleting it will remove the keymap from those layouts. Continue?</string>
+    <string name="keymap_delete_in_use_confirm">Delete anyway</string>
+
+    <string name="layout_attributes_title">Keyboard Attributes</string>
+    <string name="layout_name_label">Name</string>
+    <string name="layout_name_hint">e.g. QWERTY (US)</string>
+    <string name="layout_keymap_label">Keymap</string>
+    <string name="layout_swipekeymap_row_label">Swipekeymap</string>
 </resources>

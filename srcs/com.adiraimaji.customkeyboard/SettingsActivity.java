@@ -1,12 +1,8 @@
 package com.adiraimaji.customkeyboard;
 
-import android.content.SharedPreferences;
-import android.content.res.Configuration;
-import android.os.Build;
 import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
-import android.preference.PreferenceManager;
 
 import com.adiraimaji.customkeyboard.prefs.LayoutsPreference;
 
@@ -16,10 +12,6 @@ public class SettingsActivity extends PreferenceActivity
   public void onCreate(Bundle savedInstanceState)
   {
     super.onCreate(savedInstanceState);
-    // The preferences can't be read when in direct-boot mode. Avoid crashing
-    // and don't allow changing the settings.
-    // Run the config migration on this prefs as it might be different from the
-    // one used by the keyboard, which have been migrated.
     try
     {
       Config.migrate(getPreferenceManager().getSharedPreferences());
@@ -40,18 +32,17 @@ public class SettingsActivity extends PreferenceActivity
   protected void onResume()
   {
     super.onResume();
-    // KeymapBuilderActivity (and anything else that saves a keymap outside
-    // LayoutsPreference's own dialogs) only triggers onResume() when we
-    // return to this screen, not a fresh onCreate()/onSetInitialValue().
-    // Re-sync here so any newly created keymap shows up immediately.
+    // Picks up writes made directly to SharedPreferences elsewhere (e.g.
+    // keymap rename propagation from KeymapBuilderActivity, a separate
+    // Activity) that this screen's in-memory state wouldn't otherwise
+    // reflect while paused.
     Preference p = findPreference("layouts");
     if (p instanceof LayoutsPreference)
-      ((LayoutsPreference)p).refresh_keymap_entries();
+      ((LayoutsPreference)p).reload_from_preferences_and_sync();
   }
 
   void fallbackEncrypted()
   {
-    // Can't communicate with the user here.
     finish();
   }
 

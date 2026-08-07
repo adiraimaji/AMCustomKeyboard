@@ -393,6 +393,7 @@ public class Keyboard2 extends InputMethodService
   {
     refresh_config();
     _keyboard_layout_view.setKeyboard(current_layout());
+    refresh_keymap();
   }
 
   @Override
