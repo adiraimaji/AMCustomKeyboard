@@ -316,7 +316,7 @@ Tapping **"Add new Keymap JSON"**, or an existing **Keymap N: name** row, opens 
 [Keymap]
 
 [line-numbered JSON editor]
-────────────────────────────  ← blue divider marks the end of the field
+
 ⚠ error text (if any)          [Keymap Builder]
 
 [Remove Keymap]        [Cancel]  [OK]
