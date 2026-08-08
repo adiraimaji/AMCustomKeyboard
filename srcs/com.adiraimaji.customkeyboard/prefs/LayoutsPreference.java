@@ -392,7 +392,12 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
 
   String read_initial_keymap()
   {
-    return "{\n  \"keymap_name\": \"\",\n\n  \"a\": \"\u0b85\",\n  \"aa\": \"\u0b86\"\n}";
+    return "{\n" +
+            "  \"keymap_name\": \"\",\n" +
+            "\n" +
+            "  \"அ\": \"a\",\n" +
+            "  \"ஆ\": \"aa,A\"\n" +
+            "}";
   }
 
   void select_keymap(final SelectionCallback callback, String initialText,
@@ -487,18 +492,12 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
               {
                 try
                 {
-                  List<Map.Entry<String, String>> entries =
-                          KeymapJsonUtils.parse_flat_object(text);
+                  KeymapJsonUtils.FlattenResult result = KeymapJsonUtils.parse_and_flatten(text);
 
-                  String name = null;
-                  for (Map.Entry<String, String> e : entries)
-                    if (e.getKey().equals("keymap_name"))
-                      name = e.getValue();
-
-                  if (name == null || name.trim().isEmpty())
+                  if (result.keymap_name == null || result.keymap_name.trim().isEmpty())
                     return "\"keymap_name\" is required";
 
-                  List<String> dup_keys = KeymapJsonUtils.find_duplicate_keys(entries);
+                  List<String> dup_keys = KeymapJsonUtils.find_duplicate_keys(result.flattened);
                   if (!dup_keys.isEmpty())
                   {
                     StringBuilder b = new StringBuilder("Duplicate keys: ");

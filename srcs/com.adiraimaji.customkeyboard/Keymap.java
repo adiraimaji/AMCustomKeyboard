@@ -1,42 +1,27 @@
 package com.adiraimaji.customkeyboard;
 
-import org.json.JSONObject;
-
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 
 public class Keymap {
 
     public final String name;
 
-    private final HashMap<String, String> mappings =
-            new HashMap<>();
+    private final HashMap<String, String> mappings = new HashMap<>();
 
     public Keymap(String json) throws Exception {
 
-        JSONObject obj = new JSONObject(json);
+        KeymapJsonUtils.FlattenResult result = KeymapJsonUtils.parse_and_flatten(json);
 
-        if (!obj.has("keymap_name"))
+        if (result.keymap_name == null || result.keymap_name.trim().isEmpty())
             throw new Exception("Missing keymap_name");
 
-        name = obj.getString("keymap_name").trim();
+        name = result.keymap_name.trim();
 
-        Iterator<String> keys = obj.keys();
-
-        while (keys.hasNext()) {
-
-            String key = keys.next();
-
-            if (key.equals("keymap_name"))
-                continue;
-
-            mappings.put(
-                    key,
-                    obj.getString(key)
-            );
-        }
+        for (Map.Entry<String, String> e : result.flattened)
+            mappings.put(e.getKey(), e.getValue());
     }
-
 
     public Iterator<String> keys() {
         return mappings.keySet().iterator();

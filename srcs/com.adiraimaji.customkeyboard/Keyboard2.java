@@ -276,6 +276,8 @@ public class Keyboard2 extends InputMethodService
   {
     _config.editor_config.refresh(info, getResources());
     refresh_config();
+    if (_config.default_layout_index >= 0 && _config.default_layout_index < _config.layouts.size())
+      _config.set_current_layout(_config.default_layout_index);
     _currentSpecialLayout = refresh_special_layout();
     _keyboard_layout_view.setKeyboard(current_layout());
     refresh_keymap();

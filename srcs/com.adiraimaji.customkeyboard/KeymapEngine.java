@@ -8,6 +8,7 @@ import com.adiraimaji.customkeyboard.prefs.KeymapManager;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 
 public class KeymapEngine
 {
@@ -31,13 +32,15 @@ public class KeymapEngine
     private String pendingRaw = "";
     private int pendingOutputLen = 0;
 
-    private String loaded_name = null;
+    /** The most recently fully-finalized output text and its committed
+     length, used only for the "type the trigger character again to
+     toggle short<->long form" feature - see find_reduce_candidate().
+     Reset whenever the cursor moves for any reason unrelated to this
+     engine's own edits (see reset()). */
+    private String lastFinalizedOutput = null;
+    private int lastFinalizedOutputLen = 0;
 
-    /** Whether the currently loaded keymap should also apply to text
-     produced by a directional swipe (as opposed to only center taps).
-     Controlled by the active layout's "swipekeymap" XML attribute -
-     see Keyboard2.refresh_keymap(). Irrelevant (and never consulted)
-     when no keymap is loaded at all. */
+    private String loaded_name = null;
     private boolean allowSwipe = false;
 
     private int selfEditCount = 0;
@@ -47,23 +50,17 @@ public class KeymapEngine
     {
     }
 
-    /** [allow_swipe] mirrors the active layout's "swipekeymap" attribute -
-     pass true only when that attribute is present and "true". If the
-     layout has no "keymap" attribute at all, [keymap_name] will be
-     null and [allow_swipe]'s value has no effect (the map stays empty
-     and process() always returns false / lets the caller commit raw
-     text, regardless of swipe or not). */
     public void load(Context context, String keymap_name, boolean allow_swipe)
     {
         pendingRaw = "";
         pendingOutputLen = 0;
+        lastFinalizedOutput = null;
+        lastFinalizedOutputLen = 0;
         allowSwipe = allow_swipe;
 
-        // Always rebuild from KeymapManager instead of trusting a
-        // name-based cache - the stored JSON can be edited or deleted at
-        // any time via Settings/Keymap Builder, and that must take
-        // effect the next time a layout referencing it becomes active
-        // (see Keyboard2.refresh_keymap()), not just the first time.
+        if (keymap_name != null && keymap_name.equals(loaded_name))
+            return;
+
         map.clear();
         prefixSet.clear();
         strictPrefixSet.clear();
@@ -75,7 +72,7 @@ public class KeymapEngine
         Keymap keymap = KeymapManager.loadKeymap(context, keymap_name);
 
         if (keymap == null)
-            return; // Deleted or invalid - falls back to no transliteration.
+            return;
 
         Iterator<String> it = keymap.keys();
 
@@ -108,11 +105,6 @@ public class KeymapEngine
         load(context, null, false);
     }
 
-    /** [isSwipe] is true when [text] came from a directional swipe rather
-     than a center tap. If true and the active layout's "swipekeymap"
-     attribute isn't enabled, transliteration is skipped entirely for
-     this call and the caller should commit [text] as-is (same as if
-     no keymap were loaded at all). */
     public boolean process(InputConnection conn, String text,
                            WordTrackerCallback wordTracker, boolean isSwipe)
     {
@@ -141,6 +133,32 @@ public class KeymapEngine
 
     private void handle_char(InputConnection conn, char c, WordTrackerCallback wt)
     {
+        // Only relevant right after a full finalize (nothing pending) -
+        // an isolated keystroke that repeats/undoes the "extend" pattern
+        // used to reach the currently displayed output.
+        if (pendingRaw.isEmpty() && lastFinalizedOutput != null)
+        {
+            ReduceCandidate rc = find_reduce_candidate(lastFinalizedOutput);
+            if (rc != null && rc.trigger == c)
+            {
+                selfEditCount++;
+                conn.beginBatchEdit();
+                conn.deleteSurroundingText(lastFinalizedOutputLen, 0);
+                conn.commitText(rc.output, 1);
+                conn.endBatchEdit();
+                if (wt != null)
+                {
+                    wt.remove_surrounding_text(lastFinalizedOutputLen, 0);
+                    wt.typed(rc.output);
+                }
+                lastFinalizedOutput = rc.output;
+                lastFinalizedOutputLen = rc.output.length();
+                pendingRaw = "";
+                pendingOutputLen = 0;
+                return;
+            }
+        }
+
         String candidate = pendingRaw + c;
 
         if (map.containsKey(candidate))
@@ -154,6 +172,8 @@ public class KeymapEngine
             {
                 pendingRaw = "";
                 pendingOutputLen = 0;
+                lastFinalizedOutput = replacement;
+                lastFinalizedOutputLen = replacement.length();
             }
             return;
         }
@@ -181,6 +201,8 @@ public class KeymapEngine
             {
                 pendingRaw = "";
                 pendingOutputLen = 0;
+                lastFinalizedOutput = replacement;
+                lastFinalizedOutputLen = replacement.length();
             }
         }
         else if (prefixSet.contains(single))
@@ -192,7 +214,54 @@ public class KeymapEngine
         else
         {
             commit(conn, wt, single);
+            lastFinalizedOutput = single;
+            lastFinalizedOutputLen = single.length();
         }
+    }
+
+    private static final class ReduceCandidate
+    {
+        final String output;
+        final char trigger;
+        ReduceCandidate(String o, char t) { output = o; trigger = t; }
+    }
+
+    /** Searches every key mapped to [current_output] for one whose
+     last-character-removed prefix is itself a defined key mapping to
+     a DIFFERENT output. Among matches, prefers the one with the
+     LONGEST reduced prefix (most specific), so e.g. with both "suu"
+     (-> "su") and "sU" (-> "s") mapping to the same output, "su" -
+     the more specific reduction - wins over the shorter "s". Returns
+     null if no such structural relationship exists. */
+    private ReduceCandidate find_reduce_candidate(String current_output)
+    {
+        String best_base = null;
+        String best_output = null;
+        char best_trigger = 0;
+
+        for (Map.Entry<String, String> e : map.entrySet())
+        {
+            String key = e.getKey();
+            String value = e.getValue();
+            if (!value.equals(current_output) || key.length() < 2)
+                continue;
+
+            String base = key.substring(0, key.length() - 1);
+            String base_output = map.get(base);
+            if (base_output == null || base_output.equals(current_output))
+                continue;
+
+            if (best_base == null || base.length() > best_base.length())
+            {
+                best_base = base;
+                best_output = base_output;
+                best_trigger = key.charAt(key.length() - 1);
+            }
+        }
+
+        if (best_base == null)
+            return null;
+        return new ReduceCandidate(best_output, best_trigger);
     }
 
     private void replace_pending(InputConnection conn, WordTrackerCallback wt, String new_text)
@@ -234,6 +303,8 @@ public class KeymapEngine
     {
         pendingRaw = "";
         pendingOutputLen = 0;
+        lastFinalizedOutput = null;
+        lastFinalizedOutputLen = 0;
         lastConsumedSelfEditCount = selfEditCount;
     }
 }

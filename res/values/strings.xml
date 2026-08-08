@@ -206,7 +206,7 @@
     <string name="keymap_builder_output_column">Output</string>
     <string name="keymap_builder_keys_column">Keys</string>
 
-    <string name="keymap_builder_solo_duplicates">Dup only</string>
+    <string name="keymap_builder_solo_duplicates">Duplicate only</string>
     <string name="keymap_builder_raw_json_title">Raw JSON</string>
 
     <string name="keymap_builder_import_json_title">Import JSON</string>
@@ -231,4 +231,7 @@
     <string name="layout_name_hint">e.g. QWERTY (US)</string>
     <string name="layout_keymap_label">Keymap</string>
     <string name="layout_swipekeymap_row_label">Swipekeymap</string>
+
+    <string name="pref_default_layout_title">Default layout on open</string>
+    <string name="pref_default_layout_last_used">Last used layout</string>
 </resources>

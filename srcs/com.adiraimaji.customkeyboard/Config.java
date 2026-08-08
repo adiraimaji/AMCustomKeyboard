@@ -100,6 +100,8 @@ public final class Config
   /** Whether to automatically split the layout. */
   public boolean split_layout;
 
+  public int default_layout_index;
+
   private Config(SharedPreferences prefs, Resources res,
       Boolean foldableUnfolded, Dictionaries dicts)
   {
@@ -142,6 +144,7 @@ public final class Config
       keyboardHeightPercent = _prefs.getInt(foldable_unfolded ? "keyboard_height_unfolded" : "keyboard_height", 35);
     }
     layouts = LayoutsPreference.load_from_preferences(res, _prefs);
+    default_layout_index = _prefs.getInt("default_layout_index", -1);
     inverse_numpad = _prefs.getString("numpad_layout", "default").equals("low_first");
     String number_row = _prefs.getString("number_row", "no_number_row");
     add_number_row = !number_row.equals("no_number_row");

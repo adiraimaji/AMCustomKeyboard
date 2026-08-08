@@ -1,5 +1,6 @@
 package com.adiraimaji.customkeyboard;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,9 +9,13 @@ import java.util.Map;
 /** Hand-rolled parser for flat {"key":"value", ...} JSON objects that
  PRESERVES duplicate keys as separate entries in encounter order,
  unlike org.json.JSONObject which silently collapses duplicates (last
- value wins) with no way to detect that it happened. Used to validate
- keymap JSON text and to warn about duplicate keys instead of silently
- losing data. */
+ value wins) with no way to detect that it happened.
+
+ Keymaps are stored in exactly one format - "grouped": each entry is
+ one OUTPUT mapped to a comma-separated list of KEYS that all produce
+ it, e.g. {"keymap_name": "x", "\u0b85": "a", "\u0b86": "aa,A"}.
+ A literal comma inside a key is written as "\," (backslash-escaped),
+ same convention used everywhere else in the app. */
 public final class KeymapJsonUtils
 {
     private KeymapJsonUtils() {}
@@ -18,6 +23,22 @@ public final class KeymapJsonUtils
     public static final class ParseError extends Exception
     {
         public ParseError(String msg) { super(msg); }
+    }
+
+    /** Result of parse_and_flatten(): the keymap's declared name (may be
+     null if missing - callers must check) and the flattened key->output
+     list, ready for direct use (duplicate detection, building the
+     runtime Keymap.mappings map, or populating Keymap Builder rows). */
+    public static final class FlattenResult
+    {
+        public final String keymap_name;
+        public final List<Map.Entry<String, String>> flattened;
+
+        public FlattenResult(String keymap_name_, List<Map.Entry<String, String>> flattened_)
+        {
+            keymap_name = keymap_name_;
+            flattened = flattened_;
+        }
     }
 
     public static List<Map.Entry<String, String>> parse_flat_object(String json) throws ParseError
@@ -49,7 +70,7 @@ public final class KeymapJsonUtils
             pos[0] = i;
             String value = parse_json_string(json, pos, len);
             i = pos[0];
-            result.add(new LinkedHashMap.SimpleEntry<>(key, value));
+            result.add(new AbstractMap.SimpleEntry<>(key, value));
             i = skip_ws(json, i, len);
             if (i < len && json.charAt(i) == ',')
             {
@@ -68,7 +89,37 @@ public final class KeymapJsonUtils
         return result;
     }
 
-    /** Returns keys that appear more than once, in first-seen order. */
+    /** Parses [json] (grouped format) and returns the flattened key->output
+     representation. This is what Keymap.java (runtime loading), keymap
+     dialog validation, and Keymap Builder's edit/import pre-fill all go
+     through, so there's exactly one place that understands the storage
+     shape. */
+    public static FlattenResult parse_and_flatten(String json) throws ParseError
+    {
+        List<Map.Entry<String, String>> raw = parse_flat_object(json);
+
+        String keymap_name = null;
+        for (Map.Entry<String, String> e : raw)
+            if (e.getKey().equals("keymap_name"))
+                keymap_name = e.getValue();
+
+        List<Map.Entry<String, String>> flattened = new ArrayList<>();
+        for (Map.Entry<String, String> e : raw)
+        {
+            if (e.getKey().equals("keymap_name"))
+                continue;
+            String output = e.getKey();
+            String keys_csv = e.getValue();
+            for (String key : split_keys(keys_csv))
+                if (!key.isEmpty())
+                    flattened.add(new AbstractMap.SimpleEntry<>(key, output));
+        }
+
+        return new FlattenResult(keymap_name, flattened);
+    }
+
+    /** Returns keys that appear more than once, in first-seen order. Pass
+     in [.flattened] from parse_and_flatten(). */
     public static List<String> find_duplicate_keys(List<Map.Entry<String, String>> entries)
     {
         LinkedHashMap<String, Integer> counts = new LinkedHashMap<>();
@@ -82,6 +133,41 @@ public final class KeymapJsonUtils
             if (e.getValue() > 1)
                 dups.add(e.getKey());
         return dups;
+    }
+
+    /** Splits a comma-separated keys field into individual keys, treating
+     a backslash-escaped comma ("\,") as a literal comma character
+     rather than a separator, e.g. "\,,cm" produces two keys: "," and
+     "cm". Shared by grouped-format flattening and
+     KeymapBuilderActivity's row keys fields. */
+    public static List<String> split_keys(String raw)
+    {
+        List<String> result = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        int i = 0;
+        int len = raw.length();
+        while (i < len)
+        {
+            char c = raw.charAt(i);
+            if (c == '\\' && i + 1 < len && raw.charAt(i + 1) == ',')
+            {
+                cur.append(',');
+                i += 2;
+            }
+            else if (c == ',')
+            {
+                result.add(cur.toString());
+                cur.setLength(0);
+                i++;
+            }
+            else
+            {
+                cur.append(c);
+                i++;
+            }
+        }
+        result.add(cur.toString());
+        return result;
     }
 
     private static int skip_ws(String s, int i, int len)

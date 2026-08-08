@@ -2,6 +2,7 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
   <PreferenceCategory android:title="@string/pref_category_layout">
     <com.adiraimaji.customkeyboard.prefs.LayoutsPreference/>
+    <com.adiraimaji.customkeyboard.prefs.DefaultLayoutPreference android:title="@string/pref_default_layout_title"/>
     <PreferenceScreen android:title="@string/pref_extra_keys_title">
       <PreferenceCategory android:title="@string/pref_extra_keys_custom">
         <com.adiraimaji.customkeyboard.prefs.CustomExtraKeysPreference/>

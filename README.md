@@ -2,10 +2,10 @@
 
 ### 🤖 An Android Keyboard (Input Method) App
 
-**A powerful fork of Unexpected Keyboard (built from its downloaded source code) with a live transliteration engine, a guided Keymap Builder, independent key labels, and advanced layout customization.**
+**A powerful fork of Unexpected Keyboard (built from its downloaded source code) with a live transliteration engine, a guided Keymap Builder, independent key labels, advanced layout customization, and toggle-style keymaps.**
 
-[![Platform](https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white)](#)
-[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](#)
+[![Platform](https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white)](https://github.com/adiraimaji/AMCustomKeyboard)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://github.com/adiraimaji/AMCustomKeyboard/blob/main/LICENSE)
 [![Release](https://img.shields.io/github/v/release/adiraimaji/AMCustomKeyboard?label=release&color=success)](../../releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/adiraimaji/AMCustomKeyboard/total.svg?color=orange)](../../releases)
 
@@ -13,8 +13,6 @@
 
 Grab the newest build from the **[Releases page](../../releases)** — no Play Store required.
 Just download the `.apk`, allow installs from unknown sources, and enable it as your system keyboard in **Settings → System → Languages & Input**.
-
-</div>
 
 ---
 
@@ -44,21 +42,22 @@ Just download the `.apk`, allow installs from unknown sources, and enable it as 
 3. [Core Concept: Display vs. Output vs. Final Result](#core-concept-display-vs-output-vs-final-result)
 4. [Independent Labels](#independent-labels)
 5. [Keymaps (Transliteration Engine)](#keymaps-transliteration-engine)
-6. [Keymap Behavior Rules](#keymap-behavior-rules)
-7. [The `swipekeymap` Attribute](#the-swipekeymap-attribute)
-8. [Key Position Reference](#key-position-reference)
-9. [Shift Output Rules](#shift-output-rules)
-10. [Label Attribute Rules](#label-attribute-rules)
-11. [Space Bar Layout Indicator](#space-bar-layout-indicator)
-12. [Settings: Layout and Keymap](#settings-layout-and-keymap)
-13. [The Layout Dialog &amp; Keyboard Attributes Card](#the-layout-dialog--keyboard-attributes-card)
-14. [The Keymap Dialog](#the-keymap-dialog)
-15. [Keymap Builder](#keymap-builder)
-16. [Referential Integrity: Rename &amp; Delete Safety](#referential-integrity-rename--delete-safety)
-17. [Dictionary Suggestions with Keymaps](#dictionary-suggestions-with-keymaps)
-18. [Engine Architecture](#engine-architecture)
-19. [Full XML Example](#full-xml-example)
-20. [Quick-Reference Rules Summary](#quick-reference-rules-summary)
+6. [Keymap JSON Format](#keymap-json-format)
+7. [Toggle-Style Keymaps](#toggle-style-keymaps)
+8. [Keymap Behavior Rules](#keymap-behavior-rules)
+9. [The `swipekeymap` Attribute](#the-swipekeymap-attribute)
+10. [Shift Output Rules](#shift-output-rules)
+11. [Label Attribute Rules](#label-attribute-rules)
+12. [Space Bar Layout Indicator](#space-bar-layout-indicator)
+13. [Settings: Layout, Keymap, and Default Layout](#settings-layout-keymap-and-default-layout)
+14. [The Layout Dialog &amp; Keyboard Attributes Card](#the-layout-dialog--keyboard-attributes-card)
+15. [The Keymap Dialog](#the-keymap-dialog)
+16. [Keymap Builder](#keymap-builder)
+17. [Referential Integrity: Rename &amp; Delete Safety](#referential-integrity-rename--delete-safety)
+18. [Dictionary Suggestions with Keymaps](#dictionary-suggestions-with-keymaps)
+19. [Engine Architecture](#engine-architecture)
+20. [Full XML Example](#full-xml-example)
+21. [Quick-Reference Rules Summary](#quick-reference-rules-summary)
 
 ---
 
@@ -74,13 +73,19 @@ It extends the standard keyboard model with three independent layers:
 
 Because these three layers are decoupled, a single key can display an icon, output a Latin letter, and ultimately produce a completely different script — all without conflicting with each other.
 
-On top of the transliteration engine itself, AMCustomKeyboard ships a full in-app **Keymap Builder**: a guided, no-XML-required editor for creating and maintaining keymaps, plus a **Keyboard Attributes** card in the Layout editor so `keymap` and `swipekeymap` can be picked from a dropdown instead of hand-typed into XML.
+On top of the transliteration engine itself, AMCustomKeyboard ships:
+
+- A full in-app **Keymap Builder** (guided, no-XML editor for keymaps)
+- **Keyboard Attributes** editing in the Layout dialog
+- **Grouped-only keymap JSON** (output → keys)
+- **Toggle-style keymaps** for reversible mappings (e.g. `a ↔ அ`, `su ↔ சு`)
+- A **Default layout** setting to choose which layout loads when the keyboard opens
 
 ---
 
 ## Credits
 
-AMCustomKeyboard is built upon the excellent [**Unexpected Keyboard**](https://github.com/Julow/Unexpected-Keyboard) project. This fork preserves the original gesture-driven keyboard while extending it with several major features: **Keymaps**, the **Keymap Builder**, **Independent Labels**, and **Keyboard Attributes** editing.
+AMCustomKeyboard is built upon the excellent [**Unexpected Keyboard**](https://github.com/Julow/Unexpected-Keyboard) project. This fork preserves the original gesture-driven keyboard while extending it with several major features: **Keymaps**, the **Keymap Builder**, **Independent Labels**, **Keyboard Attributes** editing, **Toggle-style keymaps**, and **Default layout selection**.
 
 ---
 
@@ -124,12 +129,14 @@ Shift labels behave the same way, independently of their lowercase counterparts:
 
 A keymap is a JSON mapping used to transliterate typed output into another script, using **longest-match, live replacement** as the user types.
 
+Example:
+
 ```json
 {
-    "keymap_name": "Tamil",
-    "a": "அ",
-    "aa": "ஆ",
-    "ka": "க"
+  "keymap_name": "Tamil",
+  "a": "அ",
+  "aa": "ஆ",
+  "ka": "க"
 }
 ```
 
@@ -145,7 +152,7 @@ is automatically converted to:
 க
 ```
 
-The engine always resolves to the **longest valid mapping** available at each step, not just the most recent character — waiting for more input before finalizing a shorter match whenever a longer key could still complete it (e.g. `m` stays pending because `ma` and `mau` exist, only committing early if no longer key could ever follow).
+The engine always resolves to the **longest valid mapping** available at each step, not just the most recent character — waiting for more input before finalizing a shorter match whenever a longer key could still complete it.
 
 A keymap is a **named, reusable resource** stored independently of any single layout. It's linked to a layout by referencing its name in that layout's `keymap` attribute:
 
@@ -153,13 +160,80 @@ A keymap is a **named, reusable resource** stored independently of any single la
 <keyboard name="QWERTY (US)" script="latin" keymap="Tamil">
 ```
 
-Any number of layouts can reference the same keymap, and a keymap can be created, edited, renamed, or removed at any time from **Settings → Layout and Keymap**, independently of which layouts use it.
+Any number of layouts can reference the same keymap, and a keymap can be created, edited, renamed, or removed at any time from **Settings → Layout, Keymap, and Default Layout**, independently of which layouts use it.
+
+---
+
+## Keymap JSON Format
+
+AMCustomKeyboard uses a single keymap JSON structure:
+
+```json
+{
+  "keymap_name": "<name>",
+  "<output1>": "<keys1>",
+  "<output2>": "<keys2>",
+  ...
+}
+```
+
+- Each JSON key is an **output string** (what appears on screen after transliteration).
+- Each value is a **comma-separated list of key sequences** that should produce that output.
+- The `keymap_name` field is mandatory and must be non-empty.
+
+All keymaps are stored and interpreted in this grouped **output → keys** format.
+
+---
+
+## Toggle-Style Keymaps
+
+AMCustomKeyboard supports **toggle-style behavior** for keymaps, allowing you to type back and forth between related forms without using backspace.
+
+### How it works
+
+- The engine tracks the **current word** as a sequence of committed characters.
+- When you type additional characters, it tries to:
+  - Extend the current word into a **longer matching output**, or
+  - If no longer match exists, **toggle back** to a shorter valid mapping that fits the new input.
+- This allows **reversible mappings** like:
+  - `a` → `அ`typing `aa` → `ஆ`typing `a` again → back to `அ`
+  - `su` → `சு`
+    typing `u` → `சூ`
+    typing `u` again → back to `சு`
+
+### Example keymap
+
+```json
+{
+  "keymap_name": "TamilToggle",
+  "அ": "a",
+  "ஆ": "aa,A",
+  "உ": "u",
+  "ஊ": "u,U",
+  "ச்": "s",
+  "ச": "sa",
+  "சு": "su",
+  "சூ": "suu,sU"
+}
+```
+
+Behavior examples:
+
+- Type `a` → `அ`Type another `a` → `ஆ`Type another `a` → back to `அ` (cycle continues as long as mappings allow).
+- Type `s` → `ச்`
+  Type `a` → `ச`
+  Type `u` → `சு`
+  Type `u` → `சூ`
+  Type `u` again → back to `சு`
+  Type `U` while on `சு` → stays `சு` (no valid longer mapping for `sUu`), but `sU` alone gives `சூ`.
+
+This design helps correct mistyped sequences immediately without pressing backspace.
 
 ---
 
 ## Keymap Behavior Rules
 
-These rules define exactly *when* the keymap engine is applied.
+These rules define exactly *when* and *how* the keymap engine is applied.
 
 ### Rule 1 — Only primary tap output is transliterated
 
@@ -216,7 +290,7 @@ The resulting behavior (with `swipekeymap` **not** set) is:
 By default, only center-tap output (`c` / `C`) is transliterated — swipe output always bypasses the keymap, even when one is set. The `swipekeymap` attribute lets a layout opt into transliterating swipe output too:
 
 ```xml
-<keyboard name="QWERTY (US)" script="latin" keymap="tamil" eswipekeymap="true">
+<keyboard name="QWERTY (US)" script="latin" keymap="tamil" swipekeymap="true">
 ```
 
 | `keymap` attribute | `swipekeymap` attribute | Behavior                                                                |
@@ -228,14 +302,6 @@ By default, only center-tap output (`c` / `C`) is transliterated — swipe outpu
 `swipekeymap` is **inert** on any layout that has no `keymap` attribute — it does nothing on its own.
 
 This can be set directly in XML, or via the **Swipekeymap** checkbox in the [Keyboard Attributes card](#the-layout-dialog--keyboard-attributes-card) — the checkbox is automatically disabled whenever no keymap is selected, since it would have no effect.
-
----
-
-## Key Position Reference
-
-Each key has up to nine directional zones (center + eight swipe directions), each with its own **output**, **label**, and **shift variant**.
-
-<div style="display:grid;grid-template-columns:auto auto;gap:24px;justify-content:start;">
 
 ---
 
@@ -273,11 +339,17 @@ The space bar displays the **name of the currently active layout** (its `name=".
 
 ---
 
-## Settings: Layout and Keymap
+## Settings: Layout, Keymap, and Default Layout
 
-The **Layout** settings category (now titled **Layout and Keymap**) shows two grouped lists in a single screen:
+The **Layout** settings category (now titled **Layout, Keymap, and Default Layout**) shows:
 
-```
+- A list of **Layouts**
+- A list of **Keymaps**
+- A **Default layout** dropdown
+
+Example UI concept:
+
+```text
 Layout 1: QWERTY (US)
 Layout 2: My Custom Layout
 [+ Add an alternate layout]
@@ -286,15 +358,28 @@ Keymap 1: Tamil
 Keymap 2: Greek
 [+ Add new Keymap JSON]
 [+ Keymap Builder]
+
+Default layout:
+  [ Last used layout        ▼ ]
 ```
 
-- **Layout rows and Keymap rows are always grouped separately** — every Layout row appears before every Keymap row, each with its own independent numbering, regardless of the order they were added in.
-- **"Add an alternate layout"** opens the built-in layout picker (system / named / custom) — it no longer offers keymap creation, keeping the two concerns fully separate.
+### Default layout options
+
+- **Last used layout** (default)The keyboard remembers the last layout you used. When you close and reopen the keyboard, it restores that layout.
+- **Specific layout (e.g. “QWERTY (US)”)**
+  The keyboard always loads that layout whenever it is opened, regardless of what was used last time.
+
+This setting applies globally to the keyboard: when the IME starts (or when the subtype changes), it checks this preference and loads the chosen layout as the initial active layout.
+
+### Other behaviors
+
+- **Layout rows and Keymap rows are always grouped separately** — every Layout row appears before every Keymap row, each with its own independent numbering.
+- **"Add an alternate layout"** opens the built-in layout picker (system / named / custom).
 - **"Add new Keymap JSON"** opens the [Keymap dialog](#the-keymap-dialog) with a blank starter JSON.
-- **"Keymap Builder"** launches the full [guided builder](#keymap-builder) instead of the raw JSON editor.
-- Tapping an existing **Keymap N: name** row reopens it for editing/removal (same dialog, pre-filled).
-- Tapping an existing **Layout N: name** row (for a custom layout) reopens the [Layout dialog](#the-layout-dialog--keyboard-attributes-card) for that layout's XML.
-- Any keymap that exists in storage but has no row yet (e.g. created before this feature, or via another entry point) is automatically synced in the moment the Settings screen is opened or resumed — so the list always reflects exactly what's actually stored, with no manual refresh needed.
+- **"Keymap Builder"** launches the full [guided builder](#keymap-builder).
+- Tapping an existing **Keymap N: name** row reopens it for editing/removal.
+- Tapping an existing **Layout N: name** row (for a custom layout) reopens the [Layout dialog](#the-layout-dialog--keyboard-attributes-card).
+- Any keymap or layout that exists in storage but has no row yet is automatically synced when the Settings screen is opened or resumed.
 
 ---
 
@@ -302,10 +387,10 @@ Keymap 2: Greek
 
 Editing a custom layout (via "Add an alternate layout → Custom", or tapping an existing custom Layout row) opens a line-numbered XML editor with a **Keyboard Attributes** card above it:
 
-```
+```text
 ┌─ Keyboard Attributes ──────────────┐
 │ Name         [ QWERTY (US)      ]  │
-│ Keymap       [ Tamil         ▾  ]  │
+│ Keymap       [ Tamil            ▼]  │
 │ Swipekeymap    ☐                   │
 └─────────────────────────────────────┘
 
@@ -316,11 +401,11 @@ Editing a custom layout (via "Add an alternate layout → Custom", or tapping an
 
 - **Name** — a plain text field bound to the layout's `name="..."` attribute.
 - **Keymap** — a dropdown listing every keymap currently saved in Settings, plus a **(No keymap)** option. Selecting an entry writes (or removes) the `keymap="..."` attribute on the `<keyboard>` tag automatically.
-- **Swipekeymap** — a checkbox bound to the `swipekeymap="true"` attribute. Disabled automatically whenever no keymap is selected, since the attribute would be meaningless.
+- **Swipekeymap** — a checkbox bound to the `swipekeymap="true"` attribute. Disabled automatically whenever no keymap is selected.
 
-All three controls are **fully bidirectional** with the raw XML text: picking a keymap from the dropdown rewrites the XML, and manually typing `keymap="..."` (or `name="..."`, or `swipekeymap="..."`) directly into the XML box updates the Name field / dropdown / checkbox to match — with no risk of one overwriting the other mid-edit.
+All three controls are **fully bidirectional** with the raw XML text: picking a keymap from the dropdown rewrites the XML, and manually typing `keymap="..."` (or `name="..."`, or `swipekeymap="..."`) directly into the XML box updates the Name field / dropdown / checkbox to match.
 
-The input box itself is height-capped and internally scrollable, so very large layout XML never pushes the buttons off-screen — the OK / Cancel / Remove row stays fixed and visible regardless of content length.
+The input box is height-capped and internally scrollable, so very large layout XML never pushes the buttons off-screen.
 
 ---
 
@@ -328,7 +413,7 @@ The input box itself is height-capped and internally scrollable, so very large l
 
 Tapping **"Add new Keymap JSON"**, or an existing **Keymap N: name** row, opens a line-numbered JSON editor:
 
-```
+```text
 [Keymap]
 
 [line-numbered JSON editor]
@@ -338,13 +423,15 @@ Tapping **"Add new Keymap JSON"**, or an existing **Keymap N: name** row, opens 
 [Remove Keymap]        [Cancel]  [OK]
 ```
 
-- **Inline validation** — instead of a floating error balloon that covers the field, problems are shown as a small red warning line just above the button row. This includes:
+- **Inline validation** — problems are shown as a small red warning line just above the button row:
   - Missing or empty `keymap_name`.
-  - **Duplicate keys** — the JSON parser used for validation preserves every key occurrence (unlike a standard JSON parser, which silently keeps only the last value for a repeated key), so a duplicate key is always caught and reported instead of quietly discarding data.
-- **OK is blocked** while any error is present — it does not close the dialog or save until the text is valid.
-- **"Keymap Builder"** carries the dialog's *current, possibly-invalid* text (including any duplicate keys) directly into the guided builder, so nothing typed is ever lost while resolving a problem — duplicate keys land in their own separate rows automatically, ready to review in the builder's duplicate-solo view.
-- **Overwrite protection** — saving under a name that already belongs to a *different* stored keymap prompts for confirmation before replacing it. Saving under its own unchanged name (i.e. editing in place) never prompts.
-- The input box is height-capped and scrollable for large keymaps, same as the Layout dialog.
+  - **Duplicate keys** — the JSON parser used for validation preserves every key occurrence, so duplicates are always caught and reported.
+- **OK is blocked** while any error is present.
+- **"Keymap Builder"** carries the dialog's *current, possibly-invalid* text directly into the guided builder.
+- **Overwrite protection** — saving under a name that already belongs to a *different* stored keymap prompts for confirmation before replacing it.
+- The input box is height-capped and scrollable for large keymaps.
+
+Use this dialog to **copy the raw JSON** of a keymap when needed.
 
 ---
 
@@ -354,7 +441,7 @@ A dedicated, guided screen for constructing or editing a keymap without hand-wri
 
 ### Layout
 
-```
+```text
 Keymap Builder
 
 Keymap name         [ ___________ ]
@@ -368,7 +455,7 @@ Search  [___________________] ( ) Output  ( ) Keys
 
 ┌────────────────────────────────────────────┐
 │ [ output ] [ keys ] [+]                     │  ← quick add, fixed above Create
-│ instructions text  ☐ Dup only  [⇩] [✎]      │  ← Import / Raw JSON buttons
+│ instructions text  ☐ Dup only  [⇩]          │  ← Import button
 └────────────────────────────────────────────┘
 
 [            Create Keymap            ]
@@ -378,47 +465,56 @@ Search  [___________________] ( ) Output  ( ) Keys
 
 - Row 0 is fixed and non-removable: a **"keymap_name"** label on the left, an editable name field on the right.
 - Every mapping row pairs an **Output** field (left, wider, multiline) with a **Keys** field (right, comma-separated).
-- Typing into the current last row's Output field automatically appends a fresh empty row below it — no manual "add row" step needed while building linearly.
-- A comma inside a key itself can be entered as `\,` (backslash-escaped) — e.g. keys field `\,,cm` produces two separate keys: a literal comma, and `cm`.
-- Pasting multiline text into any row's Output field prompts: **split into one new row per line** (inserted immediately after that row, leaving every row above untouched) or **paste as a single multiline field**.
+- Typing into the current last row's Output field automatically appends a fresh empty row below it.
+- A comma inside a key itself can be entered as `\,` (backslash-escaped).
+- Pasting multiline text into any row's Output field prompts: **split into one new row per line** or **paste as a single multiline field**.
 
 ### Quick Add
 
-A fixed section directly above **Create Keymap** — separate from the scrolling row list — lets you fill the current trailing empty row without scrolling to the bottom of a long keymap: enter an output and comma-separated keys, tap **+**, and the row is filled (auto-spawning the next empty row, same as typing directly into a row).
+A fixed section directly above **Create Keymap** lets you fill the current trailing empty row without scrolling: enter an output and comma-separated keys, tap **+**, and the row is filled (auto-spawning the next empty row).
 
 ### Duplicate Detection & "Dup only" Filter
 
 - Every keystroke in any Keys field re-scans **all** rows for keys used more than once.
-- The **"Dup only"** checkbox is automatically enabled only while at least one duplicate exists, and automatically unchecked and disabled the moment the conflict is fully resolved.
-- Checking it **hides** (not removes) every row without a duplicate — row numbers never shift, so a row referenced as "row 5" stays "row 5" whether the filter is on or off.
-- The filter updates **live**: if you edit a row's keys so that it newly collides with another (visible or hidden) row, that row is immediately added to the filtered view without needing to re-toggle the checkbox.
-- Attempting **Create Keymap** while duplicates exist shows a dialog listing every duplicated key and which row numbers it appears in, and blocks saving until resolved.
+- The **"Dup only"** checkbox is enabled only while duplicates exist, and automatically disables when all conflicts are resolved.
+- Checking it **hides** every row without a duplicate — row numbers never shift.
+- The filter updates **live** as you edit.
+- Attempting **Create Keymap** while duplicates exist shows a dialog listing every duplicated key and blocks saving until resolved.
 
-### Search / Filter
+### Search / Filter (Exact Match, No Trimming)
 
 - A search box next to a two-way **Output / Keys** choice filters the visible rows.
-- Accepts **comma-separated terms**; a row matches if it contains **any** one of them (OR), checked only against whichever field (Output or Keys) is currently selected.
+- Accepts **comma-separated terms**; a row matches if it contains **any** one of the specified terms (OR), checked only against the selected field (Output or Keys).
+- **Search terms are matched exactly as entered**:
+  - Leading and trailing spaces are significant and are **not** trimmed.
+  - `"n"`, `" n"`, and `"n "` are different search terms.
+- For example, searching `a, n` matches rows that contain:
+  - `a`, or
+  - the exact term `" n"` (including the leading space),
+    but **not** rows that only contain `"n"` without the leading space.
+- This exact-match, no-trim behavior applies to both **Keys** and **Output** searches.
 - Combines with **"Dup only"** using AND — with both active, only rows that are both a duplicate *and* match the search are shown.
-- The current trailing empty row is always exempt from every filter, so there's always a visible place to start a new entry.
+- The current trailing empty row is always exempt from every filter.
 
-### Raw JSON View & Import
+### Raw JSON Import
 
-- The **Raw JSON** button (✎) shows a read-only-style dialog of the builder's current rows in the form `{"<output>": "<comma-separated keys>", ...}` — useful for a quick sanity check or to copy out the current state.
-- The **Import** button (⇩) opens the same format, but editable: paste or type a JSON object in that shape and it replaces every row in the builder — output becomes a row's Output field, its value becomes that row's Keys field verbatim, with no grouping applied (each JSON entry becomes exactly one row).
-- Both dialogs reuse the same escaping convention as the rest of the app (`\,` for a literal comma inside a key), so content round-trips exactly between export and import with no mangling.
+- The **Import** button (⇩) lets you paste or type grouped-format JSON directly into the builder.
+- Imported JSON replaces the builder's current rows.
+- The JSON output keys become the builder's Output fields, while each comma-separated value becomes the corresponding Keys field.
+- The same escaping convention is used throughout the builder (`\,` for a literal comma inside a key).
 
 ### Editing an Existing Keymap
 
-Opening the builder for an already-saved keymap (via its Settings row, or the Keymap dialog's "Keymap Builder" button) pre-fills every field:
+Opening the builder for an already-saved keymap pre-fills every field:
 
 - The name field is set from the stored `keymap_name`.
-- Keys sharing the same output value are automatically **grouped back into a single row** (e.g. `"m"` and `"M"` both mapping to `"ம்"` become one row with Keys field `m,M`), mirroring how new rows are normally built.
+- Keys sharing the same output value are automatically **grouped back into a single row**.
 - If the name is changed before saving, the old stored entry is removed and every layout that referenced the old name is automatically updated to the new one — see [Referential Integrity](#referential-integrity-rename--delete-safety).
 
 ### Saving
 
-- **Create Keymap** validates for duplicate keys first (see above), then checks whether the name already belongs to a different stored keymap — if so, a confirmation dialog is shown before overwriting.
-- On save, the generated JSON is written with **one key-value pair per line**, in the exact order the rows were entered, so it stays readable if reopened later in the raw [Keymap dialog](#the-keymap-dialog) editor.
+- **Create Keymap** validates for duplicate keys first, then checks whether the name already belongs to a different stored keymap — if so, a confirmation dialog is shown before overwriting.
+- On save, the generated JSON uses the **grouped output → keys format**, with one output per JSON key and its input sequences grouped in the corresponding comma-separated value.
 
 ---
 
@@ -426,16 +522,21 @@ Opening the builder for an already-saved keymap (via its Settings row, or the Ke
 
 Keymaps are referenced by name from layouts, so renaming or deleting one is kept in sync everywhere it's used, automatically:
 
-- **Live effect, no caching** — the transliteration engine always re-reads a keymap fresh from storage the moment a layout referencing it becomes active (on layout switch, subtype change, or resuming typing). An edit or deletion made in Settings or the Keymap Builder takes effect on the very next time that layout is used — there is no stale in-memory copy to worry about.
-- **Renaming** (via the Keymap Builder) automatically rewrites the `keymap="..."` attribute on every stored custom layout that referenced the old name, so those layouts keep working under the new name with no manual XML editing required.
-- **Deleting** a keymap that's still referenced by one or more layouts shows a confirmation dialog naming how many layouts use it. Confirming the deletion both removes the keymap **and** strips the `keymap`/`swipekeymap` attributes from every layout that referenced it, so no layout is ever left silently pointing at a keymap that no longer exists.
-- Settings always resyncs its Keymap list against what's actually in storage whenever the screen is opened or resumed — including picking up renames made from a separate screen (like the Keymap Builder activity), so the list is never out of date.
+- **Live effect, no caching** — the transliteration engine always re-reads a keymap fresh from storage the moment a layout referencing it becomes active.
+- **Renaming** (via the Keymap Builder) automatically rewrites the `keymap="..."` attribute on every stored custom layout that referenced the old name.
+- **Deleting** a keymap that's still referenced by one or more layouts shows a confirmation dialog naming how many layouts use it. Confirming the deletion both removes the keymap **and** strips the `keymap`/`swipekeymap` attributes from every layout that referenced it.
+- Settings always resyncs its Keymap list against what's actually in storage whenever the screen is opened or resumed.
 
 ---
 
 ## Dictionary Suggestions with Keymaps
 
-Word suggestions stay correctly in sync with keymap transliteration: the "currently typed word" tracker is driven by the keymap engine's own committed output (e.g. the Tamil text actually on screen), not by the raw Latin keys typed — so suggestion queries are always made against the same script the dictionary itself is indexed in, rather than the untransliterated keystrokes. Combining marks (such as Tamil pulli/virama and vowel signs) are treated as part of the current word rather than as word separators, so suggestions continue to work correctly across a full multi-character syllable.
+Word suggestions stay correctly in sync with keymap transliteration:
+
+- The "currently typed word" tracker is driven by the keymap engine's own committed output (e.g. the Tamil text actually on screen), not by the raw Latin keys typed.
+- Suggestion queries are always made against the same script the dictionary itself is indexed in.
+- Combining marks (such as Tamil pulli/virama and vowel signs) are treated as part of the current word rather than as word separators, so suggestions continue to work correctly across a full multi-character syllable.
+- Toggle-style behavior (e.g. `a ↔ அ`, `su ↔ சு`) works seamlessly with suggestions, since the engine's view of the current word is always the final transliterated text.
 
 ---
 
@@ -448,18 +549,19 @@ Touch
  │
  ▼
 Pointers            → Multi-touch, swipe detection, long press, sliding keys,
- │                     modifier latching/locking, gesture handling
+ │                    modifier latching/locking, gesture handling
  ▼
-KeyModifier          → Shift / Ctrl / Alt / Meta / Fn, compose keys, dead keys,
- │                     Hangul composition, gesture modifiers, selection mode
+KeyModifier         → Shift / Ctrl / Alt / Meta / Fn, compose keys, dead keys,
+ │                    Hangul composition, gesture modifiers, selection mode
  ▼
-KeyEventHandler       → Distinguishes center-tap output from swipe output
- │                       (isSwipe), gating whether the keymap engine applies
- │                       per the swipekeymap attribute
+KeyEventHandler     → Distinguishes center-tap output from swipe output
+ │                    (isSwipe), gating whether the keymap engine applies
+ │                    per the swipekeymap attribute
  ▼
-KeymapEngine         → Prefix matching, longest-sequence replacement,
- │                     live conversion, word-tracker synchronization,
- │                     always re-reads the active keymap from storage
+KeymapEngine        → Prefix matching, longest-sequence replacement,
+ │                    live conversion, toggle-style cycling,
+ │                    word-tracker synchronization,
+ │                    always re-reads the active keymap from storage
  ▼
 InputConnection
 ```
@@ -472,23 +574,35 @@ InputConnection
 | `KeyModifier.java`           | Shift / Ctrl / Alt / Meta / Fn, compose keys, dead keys, Hangul composition, gesture modifiers, selection mode                                                                      |
 | `Keymap.java`                | Loads a keymap's JSON, stores its mappings, provides lookups                                                                                                                        |
 | `KeymapManager.java`         | Persists all saved keymaps, resolves by name, handles add/remove/rename                                                                                                             |
-| `KeymapEngine.java`          | Prefix matching, longest-sequence replacement, live conversion, word-tracker synchronization, swipe-gating via`swipekeymap`                                                       |
+| `KeymapEngine.java`          | Prefix matching, longest-sequence replacement, live conversion, toggle-style cycling, word-tracker synchronization, swipe-gating via`swipekeymap`                                 |
 | `KeymapXmlAttrUtils.java`    | Reads/writes the`name`, `keymap`, and `swipekeymap` attributes on a layout's raw XML, used by both the Layout dialog's Keyboard Attributes card and rename/delete propagation |
-| `KeymapBuilderActivity.java` | The guided keymap editor — rows, quick add, duplicate detection, search/filter, raw JSON import/export                                                                             |
-| `LayoutsPreference.java`     | The Settings list combining Layout and Keymap rows, referential-integrity enforcement on rename/delete                                                                              |
+| `KeymapBuilderActivity.java` | The guided keymap editor — rows, quick add, duplicate detection, search/filter, raw JSON import                                                                                    |
+| `LayoutsPreference.java`     | The Settings list combining Layout and Keymap rows, default layout selection, referential-integrity enforcement on rename/delete                                                    |
 
 ---
 
 ## Full XML Example
 
 ```xml
-<keyboard name="Example" script="latin" keymap="Tamil" swipekeymap="false">
+<keyboard name="Example" script="latin" keymap="TamilToggle" swipekeymap="false">
     <row>
         <key c="a" cL="அ"/>
         <key c="k"/>
         <key c="i"/>
     </row>
 </keyboard>
+```
+
+Corresponding keymap (grouped output → keys, toggle-style):
+
+```json
+{
+  "keymap_name": "TamilToggle",
+  "அ": "a",
+  "ஆ": "aa,A",
+  "சு": "su",
+  "சூ": "suu,sU"
+}
 ```
 
 ---
@@ -503,11 +617,19 @@ InputConnection
 6. **Only primary tap output (`c` / `C`) passes through the keymap engine by default.**
 7. **Swipe outputs bypass the keymap unless `swipekeymap="true"` is set** on the layout.
 8. **`swipekeymap` has no effect without a `keymap` attribute present.**
-9. **The keymap engine performs longest-match, live replacement** as the user types.
-10. **A keymap edit or deletion takes effect immediately** — there is no stale cache to refresh.
-11. **Renaming a keymap updates every layout referencing it automatically.**
-12. **Deleting an in-use keymap requires confirmation**, and clears the attribute from every layout that used it.
-13. **The space bar always shows the active layout's name**, not a space glyph.
+9. **The keymap engine performs longest-match, live replacement** and supports **toggle-style cycling** between related forms.
+10. **Keymaps use grouped output → keys JSON**; `keymap_name` is required.
+11. **Search in Keymap Builder is exact-match, no trimming**:
+    - `"n"`, `" n"`, and `"n "` are different.
+    - `"a, n"` matches rows containing `a` or the exact term `" n"`, not `"n"`.
+12. **Keymap Builder supports Import** for grouped JSON; raw JSON can be copied from the Keymap Dialog.
+13. **Default layout setting**:
+    - **Last used layout** (default): restores the last active layout on reopen.
+    - **Specific layout**: always loads that layout when the keyboard opens.
+14. **A keymap edit or deletion takes effect immediately** — there is no stale cache.
+15. **Renaming a keymap updates every layout referencing it automatically.**
+16. **Deleting an in-use keymap requires confirmation**, and clears the attribute from every layout that used it.
+17. **The space bar always shows the active layout's name**, not a space glyph.
 
 ---
 

@@ -287,23 +287,13 @@
 
             <ImageButton
                 android:id="@+id/keymap_builder_import_json_button"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_marginStart="10dp"
                 android:background="@android:color/transparent"
                 android:contentDescription="@string/keymap_builder_import_json_title"
                 android:padding="2dp"
-                android:src="@android:drawable/ic_menu_upload" />
-
-            <ImageButton
-                android:id="@+id/keymap_builder_raw_json_button"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginStart="6dp"
-                android:background="@android:color/transparent"
-                android:contentDescription="@string/keymap_builder_raw_json_title"
-                android:padding="2dp"
-                android:src="@android:drawable/ic_menu_edit" />
+                android:src="@drawable/ic_importjson" />
 
         </LinearLayout>
 

@@ -80,7 +80,6 @@ public class KeymapBuilderActivity extends Activity
     private RadioGroup _search_radio_group;
     private RadioButton _search_output_radio;
     private RadioButton _search_keys_radio;
-    private ImageButton _raw_json_button;
 
     private ImageButton _import_json_button;
     /** Row indices (into _rows) that currently contain at least one
@@ -131,7 +130,6 @@ public class KeymapBuilderActivity extends Activity
         _rows_container = findViewById(R.id.keymap_builder_rows_container);
         _solo_duplicates_checkbox = findViewById(R.id.keymap_builder_solo_duplicates_checkbox);
         _solo_duplicates_checkbox.setEnabled(true);
-        _raw_json_button = findViewById(R.id.keymap_builder_raw_json_button);
 
         _quick_output = findViewById(R.id.keymap_builder_quick_output);
         _quick_keys = findViewById(R.id.keymap_builder_quick_keys);
@@ -202,14 +200,6 @@ public class KeymapBuilderActivity extends Activity
             }
         });
 
-        _raw_json_button.setOnClickListener(new View.OnClickListener()
-        {
-            @Override
-            public void onClick(View v)
-            {
-                show_raw_json_dialog();
-            }
-        });
 
         Button create_btn = findViewById(R.id.keymap_builder_create_button);
         create_btn.setOnClickListener(new View.OnClickListener()
@@ -422,7 +412,7 @@ public class KeymapBuilderActivity extends Activity
             String keys_raw = _rows.get(i).keys.getText().toString();
             if (keys_raw.isEmpty())
                 continue;
-            for (String key : split_keys(keys_raw))
+            for (String key : KeymapJsonUtils.split_keys(keys_raw))
             {
                 if (key.isEmpty())
                     continue;
@@ -495,14 +485,11 @@ public class KeymapBuilderActivity extends Activity
         List<String> search_terms = new ArrayList<>();
         if (_search_input != null)
         {
-            String raw = _search_input.getText().toString().trim();
+            String raw = _search_input.getText().toString();
             if (!raw.isEmpty())
-                for (String term : raw.split(","))
-                {
-                    String t = term.trim();
-                    if (!t.isEmpty())
-                        search_terms.add(t);
-                }
+                for (String term : raw.split(",", -1))
+                    if (!term.isEmpty())
+                        search_terms.add(term);
         }
         boolean search_by_keys = _search_keys_radio != null && _search_keys_radio.isChecked();
 
@@ -515,8 +502,6 @@ public class KeymapBuilderActivity extends Activity
             boolean is_trailing_empty_row =
                     (i == _rows.size() - 1) && output_text.isEmpty() && keys_text.isEmpty();
 
-            // Governed by the FROZEN set, not the live duplicate set -
-            // see recompute_duplicates().
             boolean passes_duplicate = !solo || _solo_frozen_indices.contains(i);
 
             boolean passes_search = true;
@@ -588,35 +573,37 @@ public class KeymapBuilderActivity extends Activity
         ensure_trailing_empty_row();
     }
 
-    static List<String> split_keys(String raw)
-    {
-        List<String> result = new ArrayList<>();
-        StringBuilder cur = new StringBuilder();
-        int i = 0;
-        int len = raw.length();
-        while (i < len)
-        {
-            char c = raw.charAt(i);
-            if (c == '\\' && i + 1 < len && raw.charAt(i + 1) == ',')
-            {
-                cur.append(',');
-                i += 2;
-            }
-            else if (c == ',')
-            {
-                result.add(cur.toString());
-                cur.setLength(0);
-                i++;
-            }
-            else
-            {
-                cur.append(c);
-                i++;
-            }
-        }
-        result.add(cur.toString());
-        return result;
-    }
+
+
+//    static List<String> split_keys(String raw)
+//    {
+//        List<String> result = new ArrayList<>();
+//        StringBuilder cur = new StringBuilder();
+//        int i = 0;
+//        int len = raw.length();
+//        while (i < len)
+//        {
+//            char c = raw.charAt(i);
+//            if (c == '\\' && i + 1 < len && raw.charAt(i + 1) == ',')
+//            {
+//                cur.append(',');
+//                i += 2;
+//            }
+//            else if (c == ',')
+//            {
+//                result.add(cur.toString());
+//                cur.setLength(0);
+//                i++;
+//            }
+//            else
+//            {
+//                cur.append(c);
+//                i++;
+//            }
+//        }
+//        result.add(cur.toString());
+//        return result;
+//    }
 
     private static String join_keys_escaped(
             List<String> keys)
@@ -687,6 +674,7 @@ public class KeymapBuilderActivity extends Activity
         recompute_duplicates();
     }
 
+
     private void populate_for_edit(String name)
     {
         KeymapManager.StoredKeymap stored = KeymapManager.find(this, name);
@@ -694,18 +682,34 @@ public class KeymapBuilderActivity extends Activity
             return;
         try
         {
-            List<Map.Entry<String, String>> entries = KeymapJsonUtils.parse_flat_object(stored.json);
-            String name_value = null;
-            for (Map.Entry<String, String> e : entries)
-                if (e.getKey().equals("keymap_name"))
-                    name_value = e.getValue();
-            populate_from_entries(entries, name_value != null ? name_value : name);
+            KeymapJsonUtils.FlattenResult result = KeymapJsonUtils.parse_and_flatten(stored.json);
+            String name_value = result.keymap_name;
+            populate_from_entries(result.flattened, name_value != null ? name_value : name);
         }
         catch (KeymapJsonUtils.ParseError e)
         {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
+//    private void populate_for_edit(String name)
+//    {
+//        KeymapManager.StoredKeymap stored = KeymapManager.find(this, name);
+//        if (stored == null)
+//            return;
+//        try
+//        {
+//            List<Map.Entry<String, String>> entries = KeymapJsonUtils.parse_flat_object(stored.json);
+//            String name_value = null;
+//            for (Map.Entry<String, String> e : entries)
+//                if (e.getKey().equals("keymap_name"))
+//                    name_value = e.getValue();
+//            populate_from_entries(entries, name_value != null ? name_value : name);
+//        }
+//        catch (KeymapJsonUtils.ParseError e)
+//        {
+//            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+//        }
+//    }
 
     /** Populates from arbitrary JSON text (may contain duplicate keys),
      e.g. the current unsaved text from the "Keymap" dialog when the
@@ -714,42 +718,54 @@ public class KeymapBuilderActivity extends Activity
     {
         try
         {
-            List<Map.Entry<String, String>> entries =
-                    KeymapJsonUtils.parse_flat_object(json_text);
-
-            String name_value = null;
-
-            for (Map.Entry<String, String> e : entries)
-            {
-                if (e.getKey().equals("keymap_name"))
-                {
-                    name_value = e.getValue();
-                    break;
-                }
-            }
-
-            /*
-             * Dialog format:
-             *
-             * "aa": "ஆ"
-             * "A":  "ஆ"
-             *
-             * populate_from_entries() groups by value and produces:
-             *
-             * output = "ஆ"
-             * keys   = "aa,A"
-             */
-            populate_from_entries(entries, name_value);
+            KeymapJsonUtils.FlattenResult result = KeymapJsonUtils.parse_and_flatten(json_text);
+            populate_from_entries(result.flattened, result.keymap_name);
         }
         catch (KeymapJsonUtils.ParseError e)
         {
-            Toast.makeText(
-                    this,
-                    "Could not parse current text: "
-                            + e.getMessage(),
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Could not parse current text: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
+//    private void populate_from_json_text(String json_text)
+//    {
+//        try
+//        {
+//            List<Map.Entry<String, String>> entries =
+//                    KeymapJsonUtils.parse_flat_object(json_text);
+//
+//            String name_value = null;
+//
+//            for (Map.Entry<String, String> e : entries)
+//            {
+//                if (e.getKey().equals("keymap_name"))
+//                {
+//                    name_value = e.getValue();
+//                    break;
+//                }
+//            }
+//
+//            /*
+//             * Dialog format:
+//             *
+//             * "aa": "ஆ"
+//             * "A":  "ஆ"
+//             *
+//             * populate_from_entries() groups by value and produces:
+//             *
+//             * output = "ஆ"
+//             * keys   = "aa,A"
+//             */
+//            populate_from_entries(entries, name_value);
+//        }
+//        catch (KeymapJsonUtils.ParseError e)
+//        {
+//            Toast.makeText(
+//                    this,
+//                    "Could not parse current text: "
+//                            + e.getMessage(),
+//                    Toast.LENGTH_LONG).show();
+//        }
+//    }
     private void populate_from_raw_entries(
             List<Map.Entry<String, String>> entries)
     {
@@ -812,24 +828,6 @@ public class KeymapBuilderActivity extends Activity
         recompute_duplicates();
     }
 
-    /** Shows the raw per-row JSON view: {"<output>": "<comma-separated
-     keys>", ...} - a diagnostic view of the builder's own row
-     structure (not the final generated keymap format), reusing the
-     same dialog style as Custom Layout / Keymap but with no Remove or
-     Keymap Builder button (view-only; OK just closes it). */
-    private void show_raw_json_dialog()
-    {
-        String json = build_raw_rows_json();
-        CustomLayoutEditDialog.show(this, json, false,
-                R.string.keymap_builder_raw_json_title,
-                0,
-                null,
-                new CustomLayoutEditDialog.Callback()
-                {
-                    @Override public void select(String text) { /* view-only */ }
-                    @Override public String validate(String text) { return null; }
-                });
-    }
 
     /** Shows the same-format dialog as "Raw JSON" ({"<output>":
      "<comma-separated keys>", ...}), but editable: pasting/typing a
@@ -1003,13 +1001,8 @@ public class KeymapBuilderActivity extends Activity
             return;
         }
 
-        LinkedHashMap<String, String> entries = new LinkedHashMap<>();
-        entries.put("keymap_name", name);
-
         LinkedHashMap<String, List<Integer>> key_rows = new LinkedHashMap<>();
-        List<Integer> name_key_rows = new ArrayList<>();
-        name_key_rows.add(0);
-        key_rows.put("keymap_name", name_key_rows);
+        int mapping_count = 0;
 
         for (int i = 0; i < _rows.size(); i++)
         {
@@ -1020,7 +1013,7 @@ public class KeymapBuilderActivity extends Activity
             if (output.isEmpty() || keys_raw.isEmpty())
                 continue;
 
-            for (String key : split_keys(keys_raw))
+            for (String key : KeymapJsonUtils.split_keys(keys_raw))
             {
                 if (key.isEmpty())
                     continue;
@@ -1029,11 +1022,10 @@ public class KeymapBuilderActivity extends Activity
                 {
                     rows_for_key = new ArrayList<>();
                     key_rows.put(key, rows_for_key);
+                    mapping_count++;
                 }
                 if (!rows_for_key.contains(row_number))
                     rows_for_key.add(row_number);
-                if (!entries.containsKey(key))
-                    entries.put(key, output);
             }
         }
 
@@ -1060,7 +1052,7 @@ public class KeymapBuilderActivity extends Activity
             return;
         }
 
-        if (entries.size() <= 1)
+        if (mapping_count == 0)
         {
             Toast.makeText(this, R.string.keymap_builder_error_no_mappings, Toast.LENGTH_SHORT).show();
             return;
@@ -1073,7 +1065,6 @@ public class KeymapBuilderActivity extends Activity
         if (overwriting_different_entry)
         {
             final String final_name = name;
-            final LinkedHashMap<String, String> final_entries = entries;
             ConfirmDialog.show(this,
                     getString(R.string.keymap_builder_overwrite_title),
                     getString(R.string.keymap_builder_overwrite_message, name),
@@ -1084,18 +1075,19 @@ public class KeymapBuilderActivity extends Activity
                         public void result(boolean positive)
                         {
                             if (positive)
-                                save_and_finish(final_name, final_entries);
+                                save_and_finish(final_name);
                         }
                     });
             return;
         }
 
-        save_and_finish(name, entries);
+        save_and_finish(name);
     }
 
-    private void save_and_finish(String name, LinkedHashMap<String, String> entries)
+    private void save_and_finish(String name)
     {
-        String json = build_keymap_json(entries);
+        String json = build_raw_rows_json();
+
         KeymapManager.add(this, new KeymapManager.StoredKeymap(name, json));
 
         if (_editing_original_name != null && !_editing_original_name.equals(name))
@@ -1109,24 +1101,7 @@ public class KeymapBuilderActivity extends Activity
         finish();
     }
 
-    private static String build_keymap_json(LinkedHashMap<String, String> entries)
-    {
-        StringBuilder b = new StringBuilder();
-        b.append("{\n");
-        int i = 0;
-        int last = entries.size() - 1;
-        for (Map.Entry<String, String> e : entries.entrySet())
-        {
-            b.append("  \"").append(escape_json_string(e.getKey())).append("\": \"")
-                    .append(escape_json_string(e.getValue())).append("\"");
-            if (i < last)
-                b.append(",");
-            b.append("\n");
-            i++;
-        }
-        b.append("}");
-        return b.toString();
-    }
+
 
     private static String escape_json_string(String s)
     {
