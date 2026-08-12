@@ -2,18 +2,15 @@ package com.adiraimaji.customkeyboard.prefs;
 
 import android.content.Context;
 import android.content.res.TypedArray;
-import android.preference.DialogPreference;
 import android.util.AttributeSet;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.SeekBar;
+import androidx.preference.DialogPreference;
 
 /*
- ** SideBarPreference
+ ** SlideBarPreference
  ** -
- ** Open a dialog showing a seekbar
+ ** Open a dialog showing a seekbar for a float value. The dialog itself is
+ ** implemented in SlideBarPreferenceDialogFragment (AndroidX Preference
+ ** dialogs are owned by a DialogFragment, not by the Preference).
  ** -
  ** xml attrs:
  **   android:defaultValue  Default value (float)
@@ -23,109 +20,61 @@ import android.widget.SeekBar;
  ** Summary field allow to show the current value using %f or %s flag
  */
 public class SlideBarPreference extends DialogPreference
-  implements SeekBar.OnSeekBarChangeListener
 {
-  private static final int STEPS = 100;
+  public static final int STEPS = 100;
 
-  private LinearLayout _layout;
-  private TextView _textView;
-  private SeekBar _seekBar;
-
-  private float _min;
-  private float _max;
-  private float _value;
-
-  private String _initialSummary;
+  private final float _min;
+  private final float _max;
+  private final String _initialSummary;
 
   public SlideBarPreference(Context context, AttributeSet attrs)
   {
     super(context, attrs);
-    _initialSummary = getSummary().toString();
-    _textView = new TextView(context);
-    _textView.setPadding(48, 40, 48, 40);
-    _seekBar = new SeekBar(context);
-    _seekBar.setOnSeekBarChangeListener(this);
-    _seekBar.setMax(STEPS);
+    CharSequence summary = getSummary();
+    _initialSummary = (summary == null) ? "%s" : summary.toString();
     _min = float_of_string(attrs.getAttributeValue(null, "min"));
-    _value = _min;
     _max = Math.max(1f, float_of_string(attrs.getAttributeValue(null, "max")));
-    _layout = new LinearLayout(getContext());
-    _layout.setOrientation(LinearLayout.VERTICAL);
-    _layout.addView(_textView);
-    _layout.addView(_seekBar);
+    setDialogLayoutResource(com.adiraimaji.customkeyboard.R.layout.pref_dialog_slider);
   }
 
-  @Override
-  public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser)
-  {
-    _value = Math.round(progress * (_max - _min)) / (float)STEPS + _min;
-    updateText();
-  }
-
-  @Override
-  public void onStartTrackingTouch(SeekBar seekBar)
-  {
-  }
-
-  @Override
-  public void onStopTrackingTouch(SeekBar seekBar)
-  {
-  }
-
-  @Override
-  protected void onSetInitialValue(boolean restorePersistedValue, Object defaultValue)
-  {
-    if (restorePersistedValue)
-    {
-      _value = getPersistedFloat(_min);
-    }
-    else
-    {
-      _value = (Float)defaultValue;
-      persistFloat(_value);
-    }
-    _seekBar.setProgress((int)((_value - _min) * STEPS / (_max - _min)));
-    updateText();
-  }
+  public float getMin() { return _min; }
+  public float getMax() { return _max; }
+  public String getInitialSummary() { return _initialSummary; }
 
   @Override
   protected Object onGetDefaultValue(TypedArray a, int index)
   {
-    return (a.getFloat(index, _min));
+    return a.getFloat(index, _min);
   }
 
   @Override
-  protected void onDialogClosed(boolean positiveResult)
+  protected void onSetInitialValue(Object defaultValue)
   {
-    if (positiveResult)
-      persistFloat(_value);
+    float value;
+    if (isPersistent())
+      value = getPersistedFloat((defaultValue instanceof Float) ? (Float)defaultValue : _min);
     else
-      _seekBar.setProgress((int)((getPersistedFloat(_min) - _min) * STEPS / (_max - _min)));
-
-    updateText();
+      value = (defaultValue instanceof Float) ? (Float)defaultValue : _min;
+    setValue(value);
   }
 
-  protected View onCreateDialogView()
+  /** Current value, from the persisted store. */
+  public float getValue()
   {
-    ViewGroup parent = (ViewGroup)_layout.getParent();
-
-    if (parent != null)
-      parent.removeView(_layout);
-    return (_layout);
+    return getPersistedFloat(_min);
   }
 
-  private void updateText()
+  /** Persists [value] and refreshes the summary shown in the list. */
+  public void setValue(float value)
   {
-    String f = String.format(_initialSummary, _value);
-
-    _textView.setText(f);
-    setSummary(f);
+    persistFloat(value);
+    setSummary(String.format(_initialSummary, value));
   }
 
   private static float float_of_string(String str)
   {
     if (str == null)
-      return (0f);
-    return (Float.parseFloat(str));
+      return 0f;
+    return Float.parseFloat(str);
   }
 }

@@ -7,9 +7,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
-import android.preference.Preference;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceViewHolder;
 import android.util.AttributeSet;
+import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.TextView;
+import androidx.core.content.ContextCompat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -89,9 +93,9 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
   }
 
   @Override
-  protected void onSetInitialValue(boolean restoreValue, Object defaultValue)
+  protected void onSetInitialValue(Object defaultValue)
   {
-    super.onSetInitialValue(restoreValue, defaultValue);
+    super.onSetInitialValue(defaultValue);
     if (_values.size() == 0)
       set_values(new ArrayList<Layout>(DEFAULT), false);
     sync_keymap_entries();
@@ -277,6 +281,12 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     _add_button = on_attach_add_button(_add_button);
     _add_button.setOrder(Preference.DEFAULT_ORDER);
     addPreference(_add_button);
+
+    boolean has_keymaps = false;
+    for (Layout v : _values)
+      if (v instanceof KeymapEntry) { has_keymaps = true; break; }
+    if (has_keymaps)
+      addPreference(new KeymapsSectionHeader(getContext()));
 
     for (int i = 0; i < _values.size(); i++)
     {
@@ -589,7 +599,7 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
    screen picks this up afterward. Returns the number updated. */
   public static int rename_keymap_references_in_preferences(Context ctx, String old_name, String new_name)
   {
-    SharedPreferences prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(ctx);
+    SharedPreferences prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(ctx);
     String raw = prefs.getString(KEY, null);
     if (raw == null)
       return 0;
@@ -626,6 +636,13 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
       setLayoutResource(R.layout.pref_layouts_add_btn);
       setTitle(R.string.pref_layouts_add);
     }
+
+    @Override
+    public void onBindViewHolder(PreferenceViewHolder holder)
+    {
+      super.onBindViewHolder(holder);
+      tint_title(holder, R.color.settings_primary);
+    }
   }
 
   class AddKeymapButton extends Preference
@@ -636,6 +653,13 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
       setPersistent(false);
       setLayoutResource(R.layout.pref_layouts_add_btn);
       setTitle(R.string.pref_layouts_add_keymap);
+    }
+
+    @Override
+    public void onBindViewHolder(PreferenceViewHolder holder)
+    {
+      super.onBindViewHolder(holder);
+      tint_title(holder, R.color.settings_secondary);
     }
 
     @Override
@@ -665,10 +689,40 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
     }
 
     @Override
+    public void onBindViewHolder(PreferenceViewHolder holder)
+    {
+      super.onBindViewHolder(holder);
+      tint_title(holder, R.color.settings_tertiary);
+    }
+
+    @Override
     protected void onClick()
     {
       Intent intent = new Intent(getContext(), KeymapBuilderActivity.class);
       getContext().startActivity(intent);
+    }
+  }
+
+  static void tint_title(PreferenceViewHolder holder, int color_res)
+  {
+    View title = holder.findViewById(android.R.id.title);
+    if (title instanceof TextView)
+      ((TextView)title).setTextColor(ContextCompat.getColor(title.getContext(), color_res));
+  }
+
+  /** Small non-clickable caption ("Keymaps") shown once, above the keymap
+      rows, so the layout list and the keymap list read as two distinct
+      sections instead of one flat list. Reuses the same caption look as the
+      real PreferenceCategory headers (pref_category_settings.xml). */
+  class KeymapsSectionHeader extends Preference
+  {
+    public KeymapsSectionHeader(Context ctx)
+    {
+      super(ctx);
+      setPersistent(false);
+      setSelectable(false);
+      setLayoutResource(R.layout.pref_category_settings);
+      setTitle(R.string.pref_layouts_keymaps_header);
     }
   }
 

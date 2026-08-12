@@ -11,6 +11,8 @@ import android.view.inputmethod.InputConnection;
 import java.util.Iterator;
 import com.adiraimaji.customkeyboard.suggestions.Suggestions;
 
+import android.content.Context;
+
 public final class KeyEventHandler
         implements Config.IKeyEventHandler,
         ClipboardHistoryService.ClipboardPasteCallback,
@@ -59,6 +61,15 @@ public final class KeyEventHandler
    transliteration should apply. */
   boolean _last_key_is_swipe = false;
 
+  /** Provides the live InputConnection at Tasker-result-application
+   time (which may be after a multi-second delay), rather than
+   reusing a possibly-stale one captured when the trigger fired. */
+  private final TaskerTriggerEngine.InputConnectionProvider _tasker_conn_provider =
+          new TaskerTriggerEngine.InputConnectionProvider()
+          {
+            public InputConnection get() { return _recv.getCurrentInputConnection(); }
+          };
+
   public KeyEventHandler(IReceiver recv, Suggestions sg)
   {
     _recv = recv;
@@ -83,16 +94,19 @@ public final class KeyEventHandler
     _space_bar_auto_complete = conf.space_bar_auto_complete;
     _last_action = null;
     KeymapEngine.get().reset();
+    TaskerTriggerEngine.get().reset();
   }
 
-  /** Selection has been updated. */
-  /** Selection has been updated. */
   public void selection_updated(int oldSelStart, int newSelStart, int newSelEnd)
   {
     _autocap.selection_updated(oldSelStart, newSelStart);
     _typedword.selection_updated(oldSelStart, newSelStart, newSelEnd);
-    if (!KeymapEngine.get().consume_self_edit())
+    boolean keymap_self = KeymapEngine.get().consume_self_edit();
+    boolean tasker_self = TaskerTriggerEngine.get().consume_self_edit();
+    if (!keymap_self)
       KeymapEngine.get().reset();
+    if (!tasker_self)
+      TaskerTriggerEngine.get().reset();
   }
 
   /** A key is being pressed. There will not necessarily be a corresponding
@@ -284,21 +298,26 @@ public final class KeyEventHandler
     send_text(text, false);
   }
 
-  /** [is_swipe] is true when the text came from a directional swipe
-   rather than a center tap. Whether swipe input actually gets
-   transliterated depends on the active layout's "swipekeymap"
-   attribute - that decision now lives in KeymapEngine, since it's a
-   per-layout setting rather than a fixed rule here. */
   void send_text(String text, boolean is_swipe)
   {
     InputConnection conn = _recv.getCurrentInputConnection();
     if (conn == null)
       return;
     _autocap.typed(text);
-    if (!KeymapEngine.get().process(conn, text, _typedword_tracker, is_swipe))
+
+    for (int i = 0; i < text.length(); i++)
     {
-      conn.commitText(text, 1);
-      _typedword.typed(text);
+      char c = text.charAt(i);
+      if (TaskerTriggerEngine.get().handle_char(_recv.getContext(), conn, c,
+              _typedword_tracker, _tasker_conn_provider))
+        continue;
+
+      String s = String.valueOf(c);
+      if (!KeymapEngine.get().process(conn, s, _typedword_tracker, is_swipe))
+      {
+        conn.commitText(s, 1);
+        _typedword.typed(s);
+      }
     }
   }
 
@@ -596,7 +615,9 @@ public final class KeyEventHandler
       send_text(" ");
   }
 
-  /** Undo the last autocorrect. */
+  /** Undo the last autocorrect, or the last Tasker trigger
+   replacement - see [TaskerTriggerEngine.try_undo_replacement] -
+   before falling back to a normal backspace. */
   void handle_backspace()
   {
     if (_last_action == LastAction.SUGGESTION_ENTERED
@@ -605,8 +626,16 @@ public final class KeyEventHandler
       replace_surrounding_text(last_replacement_word_len, 0, last_replaced_word);
       last_replaced_word = null;
     }
+    else if (TaskerTriggerEngine.get().try_undo_replacement(
+            _recv.getCurrentInputConnection(), _typedword_tracker))
+    {
+      // Handled: the just-committed Tasker replacement was swapped
+      // back for the original trigger+keyword text. Don't also send
+      // a literal KEYCODE_DEL.
+    }
     else
     {
+      TaskerTriggerEngine.get().handle_backspace(_recv.getCurrentInputConnection());
       send_key_down_up(KeyEvent.KEYCODE_DEL);
     }
   }
@@ -619,6 +648,7 @@ public final class KeyEventHandler
     public void selection_state_changed(boolean selection_is_ongoing);
     public InputConnection getCurrentInputConnection();
     public Handler getHandler();
+    public Context getContext();
   }
 
   class Autocapitalisation_callback implements Autocapitalisation.Callback

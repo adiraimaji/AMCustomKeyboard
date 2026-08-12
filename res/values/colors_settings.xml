@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Palette for SettingsActivity only (settingsTheme). Kept separate from
+       the keyboard's own color attrs (colorKeyboard, colorKey, etc, defined
+       in themes.xml) so this redesign can't affect keyboard rendering.
+       Dark-mode values live in values-night/colors_settings.xml. -->
+  <color name="settings_primary">#3B5BFE</color>
+  <color name="settings_primary_dark">#2A3FCB</color>
+  <color name="settings_accent">#3B5BFE</color>
+  <color name="settings_secondary">#00897B</color>
+  <color name="settings_tertiary">#B8580A</color>
+
+  <color name="settings_background">#F6F6F9</color>
+  <color name="settings_surface">#FFFFFF</color>
+  <color name="settings_on_surface">#1B1C1F</color>
+  <color name="settings_on_surface_variant">#5B5D66</color>
+</resources>

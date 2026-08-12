@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="settings_primary">#7C93FF</color>
+  <color name="settings_primary_dark">#0B0C10</color>
+  <color name="settings_accent">#7C93FF</color>
+  <color name="settings_secondary">#4FCDBE</color>
+  <color name="settings_tertiary">#F0A857</color>
+
+  <color name="settings_background">#121317</color>
+  <color name="settings_surface">#1C1D22</color>
+  <color name="settings_on_surface">#EDEDF0</color>
+  <color name="settings_on_surface_variant">#B7B8C2</color>
+</resources>

@@ -4,8 +4,6 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
-import android.preference.Preference;
-import android.preference.PreferenceCategory;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;

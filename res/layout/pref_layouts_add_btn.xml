@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="fill_parent" android:layout_height="wrap_content" android:gravity="center" android:minHeight="?android:attr/listPreferredItemHeightSmall">
-  <TextView android:id="@android:id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textAppearance="?android:attr/textAppearanceListItemSmall"/>
+<!-- Shared row for the 3 action buttons at the bottom of the Layouts list
+     (Add an alternate layout / Add new Keymap JSON / Keymap Builder). Each
+     button sets its own text color in Java (onBindViewHolder) so the three
+     read as distinct actions - see LAYOUTS_BUTTON_COLOR usages in
+     LayoutsPreference.java. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="?android:attr/listPreferredItemHeightSmall"
+    android:background="?attr/selectableItemBackground"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp">
+
+  <TextView
+      android:id="@android:id/title"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:textAppearance="?android:attr/textAppearanceListItemSmall"
+      android:textStyle="bold"/>
+
 </LinearLayout>

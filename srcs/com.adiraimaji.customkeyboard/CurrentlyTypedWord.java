@@ -9,7 +9,7 @@ import android.view.inputmethod.SurroundingText;
 import java.util.List;
 
 /** Keep track of the word being typed. This also tracks whether the selection
-    is empty. */
+ is empty. */
 public final class CurrentlyTypedWord
 {
   InputConnection _ic = null;
@@ -19,7 +19,7 @@ public final class CurrentlyTypedWord
   /** The currently typed word. */
   StringBuilder _w = new StringBuilder();
   /** This can be disabled if the editor doesn't support looking at the text
-      before the cursor. */
+   before the cursor. */
   boolean _enabled = false;
   /** The current word is empty while the selection is ongoing. */
   boolean _has_selection = false;
@@ -27,12 +27,12 @@ public final class CurrentlyTypedWord
   boolean _refresh_pending = false;
 
   /** The estimated cursor position in code points. Used to avoid expensive IPC
-      calls when the typed word can be estimated locally with [typed]. When the
-      cursor position gets out of sync, the text before the cursor is queried
-      again to the editor. */
+   calls when the typed word can be estimated locally with [typed]. When the
+   cursor position gets out of sync, the text before the cursor is queried
+   again to the editor. */
   int _cursor;
   /** The cursor position within the current word relative to the end of the
-      word in chars. Equal to [0] when the cursor is at the end of the word. */
+   word in chars. Equal to [0] when the cursor is at the end of the word. */
   int _w_cursor;
 
   public CurrentlyTypedWord(Handler h, Callback cb)
@@ -69,7 +69,7 @@ public final class CurrentlyTypedWord
     {
       set_current_word(e.initial_text_before_cursor);
       _w_cursor = (e.initial_text_after_cursor == null) ? 0 :
-        -append_chars(e.initial_text_after_cursor); 
+              -append_chars(e.initial_text_after_cursor);
     }
   }
 
@@ -128,7 +128,15 @@ public final class CurrentlyTypedWord
       return;
     int len = _w.length();
     int c = len + _w_cursor;
-    _w.delete(Math.max(c - remove_before, 0), Math.min(c + remove_after, len));
+    int del_start = Math.max(c - remove_before, 0);
+    // Defensive clamp: [del_end] must never be smaller than [del_start],
+    // even if [_w_cursor] ever gets out of sync with [_w] (see
+    // [type_chars] for the main fix that keeps them in sync). Without
+    // this, an inconsistent state could make [c] negative and produce
+    // a delete range like (0, -1), crashing with
+    // StringIndexOutOfBoundsException.
+    int del_end = Math.max(Math.min(c + remove_after, len), del_start);
+    _w.delete(del_start, del_end);
     _cursor -= remove_before;
     _w_cursor -= Math.min(remove_after, 0);
     callback();
@@ -156,7 +164,18 @@ public final class CurrentlyTypedWord
         insert_start = i;
     }
     if (insert_start > 0)
-      _w.setLength(0);
+    {
+      // A word-breaking character was typed. Only the part of the
+      // tracked word before the cursor is invalidated by this - the
+      // part already after the cursor (the "suffix") is untouched by
+      // the insertion and must be kept. Resetting [_w_cursor] to match
+      // the now-shorter [_w] is essential: leaving it stale (pointing
+      // outside of [_w]) is what causes [remove_surrounding_text] to
+      // compute an invalid delete range and crash.
+      int split = Math.max(Math.min(_w.length() + _w_cursor, _w.length()), 0);
+      _w.delete(0, split);
+      _w_cursor = -_w.length();
+    }
     _w.insert(Math.max(_w.length() + _w_cursor, 0), s, insert_start, end);
   }
 
@@ -166,7 +185,7 @@ public final class CurrentlyTypedWord
   }
 
   /** Append chars to the current word without moving the cursor. Return the
-      number of characters that were added in the current word. */
+   number of characters that were added in the current word. */
   int append_chars(CharSequence s, int start, int end)
   {
     int i = start;
@@ -228,7 +247,7 @@ public final class CurrentlyTypedWord
   }
 
   /** Wait some time to let the editor finishes reacting to changes and call
-      [refresh_current_word]. */
+   [refresh_current_word]. */
   void delayed_refresh()
   {
     _refresh_pending = true;

@@ -232,7 +232,7 @@ public class CustomLayoutEditDialog
           input.setText(new_text);
           input.setSelection(Math.min(cursor, new_text.length()));
           syncing[0] = false;
-          update_error_view(error_view, callback.validate(new_text));
+          update_error_view(error_view, safe_validate(callback, new_text));
         }
       });
 
@@ -260,7 +260,7 @@ public class CustomLayoutEditDialog
           input.setText(new_text);
           input.setSelection(new_text.length());
           syncing[0] = false;
-          update_error_view(error_view, callback.validate(new_text));
+          update_error_view(error_view, safe_validate(callback, new_text));
         }
         public void onNothingSelected(AdapterView<?> parent) {}
       });
@@ -276,7 +276,7 @@ public class CustomLayoutEditDialog
           input.setText(new_text);
           input.setSelection(new_text.length());
           syncing[0] = false;
-          update_error_view(error_view, callback.validate(new_text));
+          update_error_view(error_view, safe_validate(callback, new_text));
         }
       });
     }
@@ -362,7 +362,7 @@ public class CustomLayoutEditDialog
       });
     }
 
-    update_error_view(error_view, callback.validate(initial_text));
+    update_error_view(error_view, safe_validate(callback, initial_text));
 
     dialog.setOnShowListener(new DialogInterface.OnShowListener()
     {
@@ -374,7 +374,7 @@ public class CustomLayoutEditDialog
           public void onClick(View v)
           {
             String text = input.getText().toString();
-            String error = callback.validate(text);
+            String error = safe_validate(callback, text);
             update_error_view(error_view, error);
             if (error == null)
             {
@@ -391,7 +391,7 @@ public class CustomLayoutEditDialog
       public void on_change()
       {
         String text = input.getText().toString();
-        update_error_view(error_view, callback.validate(text));
+        update_error_view(error_view, safe_validate(callback, text));
 
         if (show_keymap_selector && spinner_holder[0] != null && !syncing[0])
         {
@@ -408,6 +408,25 @@ public class CustomLayoutEditDialog
       }
     });
     dialog.show();
+  }
+
+  /** Wraps [callback.validate] so a bug in some Callback implementation
+   (or a not-yet-handled edge case in whatever it parses) shows up as
+   a normal inline error message, same as any other invalid input,
+   rather than crashing the whole app - this runs on every keystroke,
+   including from a Handler-posted callback with no other surrounding
+   try/catch, so nothing here may be allowed to escape uncaught. */
+  private static String safe_validate(Callback callback, String text)
+  {
+    try
+    {
+      return callback.validate(text);
+    }
+    catch (Exception e)
+    {
+      String msg = e.getMessage();
+      return (msg != null && !msg.isEmpty()) ? msg : ("Invalid input (" + e.getClass().getSimpleName() + ")");
+    }
   }
 
   private static void update_error_view(TextView error_view, String error)

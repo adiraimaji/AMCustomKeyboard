@@ -156,9 +156,62 @@
     <item name="android:scaleType">fitCenter</item>
   </style>
   <style name="appTheme" parent="@android:style/Theme.Material.Light"/>
-  <style name="settingsTheme" parent="appTheme">
-    <!-- Setting this in the activity theme so it propagate to nested
-         preference screens. -->
-    <item name="android:fitsSystemWindows">true</item>
+
+  <!-- SettingsActivity is the only screen using this theme (and the
+       AndroidX/Material Preference library) - it's kept independent from
+       appTheme above so the redesign can't affect any other screen. -->
+  <style name="settingsTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <item name="android:windowBackground">@color/settings_background</item>
+    <item name="colorPrimary">@color/settings_primary</item>
+    <item name="colorPrimaryDark">@color/settings_primary_dark</item>
+    <item name="colorAccent">@color/settings_accent</item>
+    <item name="colorSurface">@color/settings_surface</item>
+    <item name="colorOnSurface">@color/settings_on_surface</item>
+    <item name="android:statusBarColor">@color/settings_primary_dark</item>
+    <item name="preferenceTheme">@style/settingsPreferenceTheme</item>
+  </style>
+
+  <!-- Nicer spacing/typography for preference rows and category headers, and
+       one icon (res/drawable/ic_pref_default.xml, via pref_item_settings.xml)
+       applied to every row so AndroidX doesn't leave blank reserved icon
+       space in front of items. -->
+  <style name="settingsPreferenceTheme" parent="PreferenceThemeOverlay">
+    <item name="preferenceCategoryTitleTextAppearance">@style/settingsCategoryTitle</item>
+    <item name="preferenceCategoryStyle">@style/settingsCategoryStyle</item>
+    <item name="preferenceStyle">@style/settingsPreferenceStyle</item>
+    <item name="preferenceScreenStyle">@style/settingsPreferenceScreenStyle</item>
+    <item name="switchPreferenceCompatStyle">@style/settingsSwitchPreferenceStyle</item>
+    <item name="checkBoxPreferenceStyle">@style/settingsCheckBoxPreferenceStyle</item>
+    <item name="dialogPreferenceStyle">@style/settingsDialogPreferenceStyle</item>
+  </style>
+
+  <style name="settingsCategoryTitle" parent="TextAppearance.MaterialComponents.Caption">
+    <item name="android:textColor">@color/settings_primary</item>
+    <item name="android:textStyle">bold</item>
+    <item name="android:letterSpacing">0.04</item>
+    <item name="android:textAllCaps">true</item>
+  </style>
+
+  <style name="settingsCategoryStyle" parent="Preference.Category.Material">
+    <item name="android:layout">@layout/pref_category_settings</item>
+  </style>
+
+  <!-- All five below point at the SAME layout (one icon, applied
+       everywhere) - see pref_item_settings.xml for the single place that
+       controls it. -->
+  <style name="settingsPreferenceStyle" parent="Preference.Material">
+    <item name="android:layout">@layout/pref_item_settings</item>
+  </style>
+  <style name="settingsPreferenceScreenStyle" parent="Preference.PreferenceScreen.Material">
+    <item name="android:layout">@layout/pref_item_settings</item>
+  </style>
+  <style name="settingsSwitchPreferenceStyle" parent="Preference.SwitchPreferenceCompat.Material">
+    <item name="android:layout">@layout/pref_item_settings</item>
+  </style>
+  <style name="settingsCheckBoxPreferenceStyle" parent="Preference.CheckBoxPreference.Material">
+    <item name="android:layout">@layout/pref_item_settings</item>
+  </style>
+  <style name="settingsDialogPreferenceStyle" parent="Preference.DialogPreference.Material">
+    <item name="android:layout">@layout/pref_item_settings</item>
   </style>
 </resources>

@@ -3,7 +3,7 @@ package com.adiraimaji.customkeyboard;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build.VERSION;
-import android.preference.PreferenceManager;
+import androidx.preference.PreferenceManager;
 import java.util.Map;
 import java.util.Set;
 
@@ -36,8 +36,12 @@ public final class DirectBootAwarePreferences
 
   static SharedPreferences get_protected_prefs(Context context)
   {
-    String pref_name =
-      PreferenceManager.getDefaultSharedPreferencesName(context);
+    // androidx.preference.PreferenceManager.getDefaultSharedPreferencesName()
+    // is private in this version of the library; this is exactly what it
+    // computes internally (and what the legacy android.preference one used
+    // to return), so the file name - and thus which file gets migrated -
+    // stays the same as before.
+    String pref_name = context.getPackageName() + "_preferences";
     return context.createDeviceProtectedStorageContext()
       .getSharedPreferences(pref_name, Context.MODE_PRIVATE);
   }

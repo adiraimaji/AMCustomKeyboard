@@ -114,6 +114,11 @@ public class Keyboard2 extends InputMethodService
     KeymapEngine.get().load(this, keymap_name, allow_swipe);
   }
 
+  private void refresh_tasker_automation()
+  {
+    TaskerTriggerEngine.get().reload(this);
+  }
+
   KeyboardData loadLayout(int layout_id)
   {
     return KeyboardData.load(getResources(), layout_id);
@@ -152,6 +157,11 @@ public class Keyboard2 extends InputMethodService
     Receiver recvr = this.new Receiver();
     _suggestions = new Suggestions(recvr, _config);
     _keyeventhandler = new KeyEventHandler(recvr, _suggestions);
+
+
+    _keyeventhandler = new KeyEventHandler(recvr, _suggestions);
+    refresh_tasker_automation();
+
     KeyValue.Stateful._handler = recvr;
     _config.handler = _keyeventhandler;
     prefs.registerOnSharedPreferenceChangeListener(this);
@@ -396,6 +406,7 @@ public class Keyboard2 extends InputMethodService
     refresh_config();
     _keyboard_layout_view.setKeyboard(current_layout());
     refresh_keymap();
+    refresh_tasker_automation();
   }
 
   @Override
@@ -563,6 +574,11 @@ public class Keyboard2 extends InputMethodService
     public Handler getHandler()
     {
       return _handler;
+    }
+
+    public Context getContext()
+    {
+      return Keyboard2.this;
     }
 
     public void set_suggestions(Suggestions suggestions)

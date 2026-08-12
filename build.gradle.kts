@@ -9,6 +9,10 @@ dependencies {
   // Following versions of androidx.window require sdk version 23
   implementation("androidx.window:window-java:1.4.0")
   implementation("androidx.core:core:1.16.0") // Version 1.17.0 available with sdk 36
+  // Used by SettingsActivity for the Material-styled preference screen.
+  implementation("androidx.appcompat:appcompat:1.7.0")
+  implementation("androidx.preference:preference:1.2.1")
+  implementation("com.google.android.material:material:1.12.0")
   testImplementation("junit:junit:4.13.2")
 }
 

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Used for every "normal" preference row (list/switch/slider/screen entries).
+  ============================================================================
+   TO CHANGE THE ICON SHOWN ON EVERY SETTINGS ROW, EDIT ONE OF THESE TWO:
+     1) The vector at res/drawable/ic_pref_default.xml (swap its pathData), or
+     2) The android:src below to point at a different drawable entirely.
+   Nothing else needs to change - every row in the list (and the category
+   headers, see pref_category_settings.xml) reads from this one place.
+  ============================================================================
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="?android:attr/listPreferredItemHeightSmall"
+    android:background="?attr/selectableItemBackground"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp">
+
+  <ImageView
+      android:id="@android:id/icon"
+      android:layout_width="24dp"
+      android:layout_height="24dp"
+      android:layout_marginEnd="20dp"
+      android:src="@drawable/ic_pref_default"
+      android:importantForAccessibility="no"/>
+
+  <RelativeLayout
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:paddingTop="10dp"
+      android:paddingBottom="10dp">
+
+    <TextView
+        android:id="@android:id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="?android:attr/textAppearanceListItem"
+        android:singleLine="true"
+        android:ellipsize="marquee"/>
+
+    <TextView
+        android:id="@android:id/summary"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@android:id/title"
+        android:layout_alignStart="@android:id/title"
+        android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+        android:textColor="@color/settings_on_surface_variant"
+        android:maxLines="4"/>
+
+  </RelativeLayout>
+
+  <LinearLayout
+      android:id="@android:id/widget_frame"
+      android:layout_width="wrap_content"
+      android:layout_height="match_parent"
+      android:gravity="center_vertical"
+      android:orientation="vertical"/>
+
+</LinearLayout>

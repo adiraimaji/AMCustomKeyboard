@@ -2,11 +2,11 @@ package com.adiraimaji.customkeyboard.prefs;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.preference.Preference;
-import android.preference.PreferenceGroup;
 import android.util.AttributeSet;
 import android.view.View;
-import android.view.ViewGroup;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceGroup;
+import androidx.preference.PreferenceViewHolder;
 import java.util.ArrayList;
 import java.util.List;
 import com.adiraimaji.customkeyboard.*;
@@ -164,9 +164,9 @@ public abstract class ListGroupPreference<E> extends PreferenceGroup
   /** Internal */
 
   @Override
-  protected void onSetInitialValue(boolean restoreValue, Object defaultValue)
+  protected void onSetInitialValue(Object defaultValue)
   {
-    String input = (restoreValue) ? getPersistedString(null) : (String)defaultValue;
+    String input = isPersistent() ? getPersistedString(null) : (String)defaultValue;
     if (input != null)
     {
       List<E> values = load_from_string(input, get_serializer());
@@ -176,15 +176,14 @@ public abstract class ListGroupPreference<E> extends PreferenceGroup
   }
 
   @Override
-  protected void onAttachedToActivity()
+  public void onAttached()
   {
-    super.onAttachedToActivity();
+    super.onAttached();
     if (_attached)
       return;
     _attached = true;
     reattach();
   }
-
 
   void reattach()
   {
@@ -223,15 +222,16 @@ public abstract class ListGroupPreference<E> extends PreferenceGroup
       _index = index;
       setPersistent(false);
       setTitle(label_of_value(value, index));
+      setIcon(R.drawable.ic_pref_default);
       if (should_allow_remove_item(value))
         setWidgetLayoutResource(R.layout.pref_listgroup_item_widget);
     }
 
     @Override
-    protected View onCreateView(ViewGroup parent)
+    public void onBindViewHolder(PreferenceViewHolder holder)
     {
-      View v = super.onCreateView(parent);
-      View remove_btn = v.findViewById(R.id.pref_listgroup_remove_btn);
+      super.onBindViewHolder(holder);
+      View remove_btn = holder.findViewById(R.id.pref_listgroup_remove_btn);
       if (remove_btn != null)
         remove_btn.setOnClickListener(new View.OnClickListener() {
           @Override
@@ -240,7 +240,7 @@ public abstract class ListGroupPreference<E> extends PreferenceGroup
             remove_item(_index);
           }
         });
-      v.setOnClickListener(new View.OnClickListener() {
+      holder.itemView.setOnClickListener(new View.OnClickListener() {
         @Override
         public void onClick(View _v)
         {
@@ -257,7 +257,6 @@ public abstract class ListGroupPreference<E> extends PreferenceGroup
           }, _value);
         }
       });
-      return v;
     }
   }
 

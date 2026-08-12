@@ -3,11 +3,10 @@ package com.adiraimaji.customkeyboard.prefs;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
-import android.os.Build.VERSION;
-import android.preference.CheckBoxPreference;
-import android.preference.PreferenceCategory;
+import androidx.preference.CheckBoxPreference;
+import androidx.preference.PreferenceCategory;
+import androidx.preference.PreferenceViewHolder;
 import android.util.AttributeSet;
-import android.view.View;
 import android.widget.TextView;
 import java.util.HashMap;
 import java.util.Map;
@@ -370,8 +369,9 @@ public class ExtraKeysPreference extends PreferenceCategory
   }
 
   @Override
-  protected void onAttachedToActivity()
+  public void onAttached()
   {
+    super.onAttached();
     if (_attached)
       return;
     _attached = true;
@@ -399,16 +399,17 @@ public class ExtraKeysPreference extends PreferenceCategory
       setKey(pref_key_of_key_name(key_name));
       setDefaultValue(default_checked);
       setTitle(title);
-      if (VERSION.SDK_INT >= 26)
-        setSingleLineTitle(false);
+      setIcon(com.adiraimaji.customkeyboard.R.drawable.ic_pref_default);
+      setSingleLineTitle(false);
     }
 
     @Override
-    protected void onBindView(View view)
+    public void onBindViewHolder(PreferenceViewHolder holder)
     {
-      super.onBindView(view);
-      TextView title = (TextView)view.findViewById(android.R.id.title);
-      title.setTypeface(Theme.getKeyFont(getContext()));
+      super.onBindViewHolder(holder);
+      TextView title = (TextView)holder.findViewById(android.R.id.title);
+      if (title != null)
+        title.setTypeface(Theme.getKeyFont(getContext()));
     }
   }
 }

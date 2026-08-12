@@ -5,7 +5,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
-import android.preference.Preference;
+import androidx.preference.Preference;
 import android.util.AttributeSet;
 
 import com.adiraimaji.customkeyboard.KeyboardData;
@@ -38,10 +38,10 @@ public class DefaultLayoutPreference extends Preference
     }
 
     @Override
-    protected void onSetInitialValue(boolean restoreValue, Object defaultValue)
+    protected void onSetInitialValue(Object defaultValue)
     {
         int def = (defaultValue instanceof Integer) ? (Integer)defaultValue : -1;
-        int value = restoreValue ? getPersistedInt(def) : def;
+        int value = isPersistent() ? getPersistedInt(def) : def;
         refresh_summary(value);
     }
 
