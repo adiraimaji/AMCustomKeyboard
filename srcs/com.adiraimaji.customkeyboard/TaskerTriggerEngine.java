@@ -45,10 +45,35 @@ import java.util.HashSet;
  and retyping it re-fire the command. Typing anything else (a space,
  another letter, moving the cursor) instead of that one immediate
  backspace forfeits the undo - the restored/expanded text is then
- left alone, as plain text. */
+ left alone, as plain text.
+
+ Expand patterns ("amck_patterns"): a second, independent kind
+ of trigger for open-ended text, e.g. prefix ".." + suffix " " turns
+ "..5+1 " into whatever "Expand Task 1" returns, with "5+1" as
+ %keyword. Unlike the fixed dictionary above (a handful of known
+ keywords, matched character-by-character as they're typed), the
+ content here is arbitrary and unbounded, so it can't be tracked the
+ same way. Instead [check_expand_patterns] is called after every
+ committed character (forward-typed or backspace) and simply looks at
+ the field's actual current text: does it now end with some
+ configured suffix, and if so, is there a matching prefix somewhere
+ before that (with at least one character of content in between)?
+ This needs no dedicated state at all - it's the same
+ read-the-actual-field-text philosophy [handle_backspace] already
+ uses for typo-correction, just applied per-keystroke rather than
+ only on backspace. Firing one always behaves like an "amck_append"
+ trigger: only the matched prefix+content+suffix span is replaced,
+ the rest of the field is untouched - and reuses the exact same
+ one-shot undo as dictionary triggers. */
 public class TaskerTriggerEngine
 {
     private static final String LOG_TAG = "TaskerTriggerEngine";
+
+    /** Bounds how much text [check_expand_patterns] looks at before the
+     cursor on every keystroke - large enough for realistic expand
+     content, small enough to keep the per-character InputConnection
+     peek cheap. */
+    private static final int MAX_EXPAND_SCAN_CHARS = 4000;
 
     private static final TaskerTriggerEngine INSTANCE = new TaskerTriggerEngine();
 
@@ -73,8 +98,68 @@ public class TaskerTriggerEngine
 
     private String _pending = "";
 
+    /** True while the currently focused field belongs to this app's own
+     UI (see [set_paused]) - e.g. the Tasker Automation JSON editor
+     itself, or the keymap JSON editor that reuses the same dialog.
+     While paused, this engine does nothing at all: no character
+     tracking, no expand-pattern scanning, no undo - so typing the
+     configured trigger/prefix/suffix characters while editing the
+     config JSON (a near-certainty, since JSON itself uses quotes,
+     colons, and the very prefix/suffix strings being configured)
+     can't misfire a task or eat the user's own typed text. Editing
+     that JSON in some other app entirely (not this one) is
+     unaffected - triggers stay active there, same as any other
+     field. */
+    private boolean _paused = false;
+
     private int _self_edit_count = 0;
     private int _last_consumed_self_edit_count = 0;
+
+    /** Bumped only on a genuine field/app focus change (see
+     [new_field_started], called once per [Keyboard2.onStartInputView]
+     - NOT on every ordinary keystroke, unlike [reset] below). An
+     in-flight [fire]/[fire_expand] captures the value at the moment it
+     starts; if it no longer matches by the time the async Tasker
+     result comes back, the user has since clicked into another field
+     or switched app entirely, and the result must be dropped rather
+     than landing in whatever field now happens to be focused -
+     [InputConnectionProvider.get] would happily hand back a live,
+     non-null InputConnection for that unrelated field, so a null
+     check alone can't catch this. */
+    private int _session_id = 0;
+
+    /** Boundary used by [check_expand_patterns], in the same
+     "characters before the cursor" coordinate system as its own
+     [text_before] read: text at or after this offset was typed by the
+     user since the last successful expand-pattern fire (or since this
+     field was focused); text before it is either pre-existing content
+     or the result of that last fire. A candidate prefix match is only
+     accepted at or after this offset - see [check_expand_patterns] -
+     so a result like "8*3=24" (from firing on prefix "=" suffix "\n")
+     can't have its own "=24" reinterpreted as a fresh trigger the next
+     time the user presses Enter: only a "=" the user actually types
+     *after* the result counts as a new prefix. This is what makes
+     "just after the replacement lands, retyping the bare suffix
+     should be ignored" work: right after a fire, this offset sits
+     past the whole matched span, so re-adding just the suffix (with
+     nothing else touched) can never find a prefix at or after it.
+
+     Reset to 0 on a genuine field change (see [_session_id]) -
+     deliberately NOT on every [reset], since that fires on
+     essentially every ordinary keystroke and clearing it there would
+     defeat the whole point. Also shrunk (never grown) down to the
+     field's current length at the top of every
+     [check_expand_patterns] call, so backspacing all the way through
+     a previously-fired result and retyping it from scratch is never
+     blocked forever. And restored to its pre-fire value the moment
+     that fire's one-shot undo is used (see [try_undo_replacement] /
+     [_undo_expand_prev_boundary]) - undoing a fire undoes this side
+     effect of it too, so as soon as the user backspaces the restored
+     suffix back off again ("resuming" the edit - e.g. fixing the last
+     digit before re-typing the suffix) the original prefix is
+     immediately eligible again, rather than needing the whole span
+     deleted down to nothing first. */
+    private int _expand_no_match_before_len = 0;
 
     /** One-shot undo state for the replacement that was just
      committed - null/0 whenever there is nothing to undo. See
@@ -83,7 +168,41 @@ public class TaskerTriggerEngine
     private String _undo_after = null;
     private int _undo_replacement_len = 0;
 
+    /** Companion to the one-shot undo state above, set only by
+     [fire_expand]'s callback (left at -1 - "not applicable" - by
+     [arm_undo] for every other caller, i.e. ordinary dictionary
+     triggers). Holds whatever [_expand_no_match_before_len] was
+     *before* this particular fire overwrote it. [try_undo_replacement]
+     restores it there when this undo is used, so undoing an
+     expand-pattern fire reverts its effect on that boundary along
+     with the field text itself - see [_expand_no_match_before_len]. */
+    private int _undo_expand_prev_boundary = -1;
+
     private TaskerTriggerEngine() {}
+
+    /** Called from [Keyboard2.onStartInputView] on every field focus
+     change, based on whether the newly focused field's package is
+     this app's own. See [_paused]. Resets any in-flight tracking
+     state either way, since a field focus change always means
+     whatever was being tracked in the old field no longer applies. */
+    public void set_paused(boolean paused)
+    {
+        _paused = paused;
+        _pending = "";
+        clear_undo();
+    }
+
+    /** Call once per genuine field/app focus change (from
+     [KeyEventHandler.started]) - distinct from [reset], which also
+     fires on essentially every ordinary keystroke (see its own doc)
+     and must NOT touch [_session_id]/[_expand_no_match_before_len],
+     or those would never survive long enough to do their job. */
+    public void new_field_started()
+    {
+        _session_id++;
+        _expand_no_match_before_len = 0;
+        reset();
+    }
 
     /** Reloads the single stored Tasker Automation config from storage.
      Cheap to call often - picks up edits made in Settings
@@ -91,6 +210,8 @@ public class TaskerTriggerEngine
     public void reload(Context ctx)
     {
         _pending = "";
+        _session_id++; // Any in-flight call was launched under the old config.
+        _expand_no_match_before_len = 0;
         _prefix_set.clear();
         _strict_prefix_set.clear();
         _full_commands.clear();
@@ -138,7 +259,7 @@ public class TaskerTriggerEngine
                                KeymapEngine.WordTrackerCallback wt,
                                InputConnectionProvider late_conn_provider)
     {
-        if (_config == null || _full_commands.isEmpty())
+        if (_paused || _config == null || _full_commands.isEmpty())
             return false;
 
         // Any character typed - whether or not this engine ends up
@@ -203,7 +324,7 @@ public class TaskerTriggerEngine
         _self_edit_count++;
         clear_undo();
 
-        if (_config == null || _prefix_set.isEmpty() || conn == null)
+        if (_paused || _config == null || _prefix_set.isEmpty() || conn == null)
         {
             _pending = "";
             return;
@@ -262,12 +383,13 @@ public class TaskerTriggerEngine
      nothing armed. */
     public boolean try_undo_replacement(InputConnection conn, KeymapEngine.WordTrackerCallback wt)
     {
-        if (_undo_before == null || conn == null)
+        if (_paused || _undo_before == null || conn == null)
             return false;
 
         final String before = _undo_before;
         final String after = _undo_after;
         final int replacement_len = _undo_replacement_len;
+        final int expand_prev_boundary = _undo_expand_prev_boundary;
         clear_undo();
 
         _self_edit_count++;
@@ -295,6 +417,16 @@ public class TaskerTriggerEngine
             Log.w(LOG_TAG, "try_undo_replacement failed", e);
             return true; // Already consumed this backspace either way.
         }
+
+        // This undo just put back the exact text an expand-pattern
+        // fire consumed - undo its effect on the match boundary too,
+        // so backspacing off the just-restored suffix (to fix a typo
+        // and re-trigger) isn't left permanently blocked by a boundary
+        // that fire set. See [_expand_no_match_before_len] and
+        // [_undo_expand_prev_boundary]. Left untouched (-1) for a
+        // dictionary-trigger undo, which never touches that boundary.
+        if (expand_prev_boundary >= 0)
+            _expand_no_match_before_len = expand_prev_boundary;
 
         if (wt != null)
         {
@@ -330,6 +462,11 @@ public class TaskerTriggerEngine
                       KeymapEngine.WordTrackerCallback wt,
                       final InputConnectionProvider late_conn_provider)
     {
+        // Captured now, before the async call - compared against
+        // [_session_id] when the result comes back so a field/app
+        // switch in the meantime can be detected. See [_session_id].
+        final int session = _session_id;
+
         final String matched = _pending;
         _pending = "";
 
@@ -357,9 +494,17 @@ public class TaskerTriggerEngine
             Log.w(LOG_TAG, "reading field text failed, aborting trigger", e);
             return;
         }
-        final String full_field_text = text_before + text_after;
+        // What gets sent to the task: text1/text2 are the field's
+        // content around the matched trigger+keyword (with the trigger
+        // itself removed from text1), never the whole field as one
+        // blob - keyword is just "one", never "##one"/"@@one". This is
+        // purely about what's sent to Tasker; how the result gets
+        // applied back (whole-field replace vs. just the matched span)
+        // is unchanged, still driven by [final_is_replace] below.
+        final String text1 = text_before.substring(0, text_before.length() - matched.length());
+        final String text2 = text_after;
 
-        final int remaining_before_len = Math.max(0, text_before.length() - matched.length());
+        final int remaining_before_len = text1.length();
         final int remaining_after_len = text_after.length();
         // What "undo" should restore the field to if the async result
         // is later reversed with a single backspace - see [arm_undo].
@@ -393,25 +538,57 @@ public class TaskerTriggerEngine
         if (wt != null)
             wt.remove_surrounding_text(matched.length(), 0);
 
-        TaskerBridge.run_task(ctx, task_name, full_field_text, _config.timeout_ms, new TaskerBridge.ResultCallback()
+        TaskerBridge.run_task(ctx, task_name, text1, text2, keyword, _config.timeout_ms, new TaskerBridge.ResultCallback()
         {
             public void result(String output, String error_message)
             {
+                if (session != _session_id)
+                    return; // Field/app changed while the task was running - see [_session_id].
+
                 InputConnection late_conn = late_conn_provider.get();
                 if (late_conn == null)
-                    return; // Session moved on (field/app changed) - nothing safe to do.
+                    return; // No field focused at all right now - nothing safe to do.
 
-                if (error_message != null)
+                if (output == null)
                 {
-                    android.widget.Toast.makeText(ctx, error_message, android.widget.Toast.LENGTH_SHORT).show();
-                    return;
+                    // Task never sent back a matching reply (it stopped
+                    // before reaching Send Intent / the plugin action,
+                    // timed out, or Tasker was unreachable). [matched]
+                    // - the typed trigger+keyword - was already deleted
+                    // from the field before the task ran (see above),
+                    // and nothing else has been touched yet regardless
+                    // of "append" vs "replace", so putting [matched]
+                    // back at the cursor is enough to restore the field
+                    // exactly as it was before this trigger fired -
+                    // rather than leaving the keyword gone and the
+                    // field just sitting empty at that spot.
+                    if (error_message != null)
+                        android.widget.Toast.makeText(ctx, error_message, android.widget.Toast.LENGTH_SHORT).show();
+                    try
+                    {
+                        _self_edit_count++;
+                        late_conn.beginBatchEdit();
+                        try
+                        {
+                            late_conn.commitText(matched, 1);
+                        }
+                        finally
+                        {
+                            late_conn.endBatchEdit();
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Log.w(LOG_TAG, "restoring original trigger text failed", e);
+                    }
+                    return; // Nothing was actually replaced - no undo to arm.
                 }
 
-                String text_to_insert = (output != null) ? output : "";
+                String text_to_insert = output;
 
                 android.widget.Toast.makeText(ctx,
-                    "Tasker returned: \"" + text_to_insert + "\"",
-                    android.widget.Toast.LENGTH_SHORT).show();
+                        "Tasker returned: \"" + text_to_insert + "\"",
+                        android.widget.Toast.LENGTH_SHORT).show();
 
                 try
                 {
@@ -442,15 +619,284 @@ public class TaskerTriggerEngine
         });
     }
 
+    /** Call after EVERY committed character - whether typed forward
+     (through this engine's own dictionary-trigger path, KeymapEngine,
+     or a plain commit) or removed via backspace (but NOT right after
+     [try_undo_replacement] restores text - see the call sites in
+     KeyEventHandler). Looks at the field's actual current text and,
+     if it now completes some configured "amck_patterns" entry,
+     fires it. Safe to call with [conn] null, with no expand patterns
+     configured, or if talking to [conn] fails for any reason - always
+     just does nothing rather than throwing. */
+    public void check_expand_patterns(Context ctx, InputConnection conn,
+                                      KeymapEngine.WordTrackerCallback wt,
+                                      InputConnectionProvider late_conn_provider)
+    {
+        if (_paused || _config == null || _config.expand_patterns.isEmpty() || conn == null)
+            return;
+
+        String text_before;
+        try
+        {
+            CharSequence before = conn.getTextBeforeCursor(MAX_EXPAND_SCAN_CHARS, 0);
+            text_before = (before != null) ? before.toString() : "";
+        }
+        catch (Exception e)
+        {
+            Log.w(LOG_TAG, "getTextBeforeCursor failed in check_expand_patterns", e);
+            return;
+        }
+
+        // [_expand_no_match_before_len] is an absolute offset that was
+        // only ever meant to protect a *previous fire's own result*
+        // from being rescanned - it was never meant to permanently
+        // wall off that position once the result is edited away. If
+        // the field is now shorter than that offset, the user has
+        // backspaced into (or through) the protected span, so shrink
+        // the boundary down to what's actually left. Without this,
+        // deleting a fired result (in full or in part) and retyping
+        // the exact same prefix/suffix at that same position would
+        // stay blocked forever, since [prefix_idx] there would always
+        // read as "before" a boundary that never moved - until the
+        // keyboard is closed and reopened (the only other place this
+        // offset resets). This mirrors [handle_backspace] re-deriving
+        // its own state from the live field text rather than trusting
+        // stale bookkeeping.
+        if (text_before.length() < _expand_no_match_before_len)
+            _expand_no_match_before_len = text_before.length();
+
+        if (text_before.isEmpty())
+            return;
+
+        for (TaskerAutomationConfig.ExpandPattern p : _config.expand_patterns)
+        {
+            if (!text_before.endsWith(p.suffix))
+                continue;
+            int content_end = text_before.length() - p.suffix.length();
+            if (content_end < p.prefix.length())
+                continue; // Not even room for prefix + suffix, let alone content.
+            int search_from = content_end - p.prefix.length();
+            int prefix_idx = text_before.lastIndexOf(p.prefix, search_from);
+            if (prefix_idx < 0)
+                continue;
+            // Don't let the result of a previous fire in this same
+            // field be reinterpreted as a fresh prefix - e.g. firing
+            // on prefix "=" suffix "\n" against "8*3=24" must not let
+            // a later, unrelated Enter press treat the "=24" already
+            // sitting there as a new match. Only a prefix the user
+            // typed *after* that point counts. See
+            // [_expand_no_match_before_len]. Clamped to the current
+            // text's length so a boundary from before some
+            // intervening backspace can't block matching forever.
+            if (prefix_idx < Math.min(_expand_no_match_before_len, text_before.length()))
+                continue;
+            // The keyword (the content between prefix and suffix) must
+            // never contain a newline. If a newline was typed anywhere
+            // in between, the prefix found above is stale - the user
+            // has moved to a new line, so matching must not reach back
+            // across it. Rather than fail the whole pattern, this
+            // should behave as if that stale prefix had never been
+            // typed: only a prefix typed *after* the newline can still
+            // complete this pattern, and since [lastIndexOf] above
+            // already returned the closest possible occurrence at or
+            // before [search_from], no closer occurrence exists after
+            // the newline - so there is nothing left to try here. Note
+            // this only concerns a newline *inside* the keyword span;
+            // a newline that is itself the configured suffix (already
+            // matched above via [endsWith]) is the terminator, not
+            // part of the keyword, and content_end already excludes it.
+            int prefix_end = prefix_idx + p.prefix.length();
+            int newline_in_content = text_before.indexOf('\n', prefix_end);
+            if (newline_in_content >= 0 && newline_in_content < content_end)
+                continue;
+            String content = text_before.substring(prefix_end, content_end);
+            if (content.isEmpty())
+                continue; // Require non-empty content - otherwise ordinary
+            // punctuation like ".. " (an ellipsis before a
+            // space) would misfire as an empty-content match.
+            String matched_span = text_before.substring(prefix_idx);
+            fire_expand(ctx, conn, wt, late_conn_provider, matched_span, content, p.task);
+            return; // Only one pattern fires per keystroke.
+        }
+    }
+
+    private void fire_expand(final Context ctx, InputConnection conn,
+                             KeymapEngine.WordTrackerCallback wt,
+                             final InputConnectionProvider late_conn_provider,
+                             final String matched_span, String content, String task_name)
+    {
+        // Any character that got us here already ran through
+        // [handle_char] first (which clears undo for every character
+        // when dictionary triggers are configured) - but expand
+        // patterns work even with none configured, so clear it here
+        // too rather than assuming that already happened.
+        clear_undo();
+
+        // Captured now, before the async call - compared against
+        // [_session_id] when the result comes back so a field/app
+        // switch (or the keyboard closing) in the meantime can be
+        // detected and the result dropped instead of landing wherever
+        // is now focused. See [_session_id] and [fire], which this
+        // mirrors.
+        final int session = _session_id;
+
+        final int MAX_FIELD_CHARS = 20000;
+        final String text_before;
+        final String text_after;
+        try
+        {
+            CharSequence before = conn.getTextBeforeCursor(MAX_FIELD_CHARS, 0);
+            CharSequence after = conn.getTextAfterCursor(MAX_FIELD_CHARS, 0);
+            text_before = (before != null) ? before.toString() : "";
+            text_after = (after != null) ? after.toString() : "";
+        }
+        catch (Exception e)
+        {
+            Log.w(LOG_TAG, "reading field text failed, aborting expand pattern", e);
+            return;
+        }
+
+        // Defensive re-check: the field could in principle have
+        // changed between [check_expand_patterns]'s scan and here
+        // (both run synchronously back-to-back on the same thread, so
+        // in practice it can't, but never assume it silently still
+        // holds).
+        if (!text_before.endsWith(matched_span))
+            return;
+
+        final String text1 = text_before.substring(0, text_before.length() - matched_span.length());
+        final String text2 = text_after;
+        final String keyword = content;
+
+        try
+        {
+            _self_edit_count++;
+            conn.beginBatchEdit();
+            try
+            {
+                conn.deleteSurroundingText(matched_span.length(), 0);
+            }
+            finally
+            {
+                conn.endBatchEdit();
+            }
+        }
+        catch (Exception e)
+        {
+            Log.w(LOG_TAG, "deleting matched expand pattern failed, aborting", e);
+            return;
+        }
+        if (wt != null)
+            wt.remove_surrounding_text(matched_span.length(), 0);
+
+        // Expand patterns always behave like an "amck_append" trigger:
+        // only [matched_span] itself is ever touched - see the class
+        // doc.
+        final String undo_before = matched_span;
+        final String undo_after = "";
+
+        TaskerBridge.run_task(ctx, task_name, text1, text2, keyword, _config.timeout_ms,
+                new TaskerBridge.ResultCallback()
+                {
+                    public void result(String output, String error_message)
+                    {
+                        if (session != _session_id)
+                            return; // Field/app changed (or keyboard closed) while the task was running - see [_session_id].
+
+                        InputConnection late_conn = late_conn_provider.get();
+                        if (late_conn == null)
+                            return; // No field focused at all right now - nothing safe to do.
+
+                        if (output == null)
+                        {
+                            // Task never sent back a matching reply (timeout,
+                            // Tasker unreachable, or it just didn't include the
+                            // "text" extra) - [matched_span] was already
+                            // removed from the field before the task ran (see
+                            // above), so put it right back rather than leaving
+                            // the field with the keyword gone and nothing in
+                            // its place.
+                            if (error_message != null)
+                                android.widget.Toast.makeText(ctx, error_message, android.widget.Toast.LENGTH_SHORT).show();
+                            try
+                            {
+                                _self_edit_count++;
+                                late_conn.beginBatchEdit();
+                                try
+                                {
+                                    late_conn.commitText(matched_span, 1);
+                                }
+                                finally
+                                {
+                                    late_conn.endBatchEdit();
+                                }
+                            }
+                            catch (Exception e)
+                            {
+                                Log.w(LOG_TAG, "restoring original expand pattern text failed", e);
+                            }
+                            return; // Nothing was actually replaced - no undo to arm.
+                        }
+
+                        String text_to_insert = output;
+
+                        android.widget.Toast.makeText(ctx,
+                                "Tasker returned: \"" + text_to_insert + "\"",
+                                android.widget.Toast.LENGTH_SHORT).show();
+
+                        try
+                        {
+                            _self_edit_count++;
+                            late_conn.beginBatchEdit();
+                            try
+                            {
+                                late_conn.commitText(text_to_insert, 1);
+                            }
+                            finally
+                            {
+                                late_conn.endBatchEdit();
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Log.w(LOG_TAG, "applying Tasker result failed", e);
+                            return;
+                        }
+
+                        // The field's text before the cursor is now
+                        // text1+text_to_insert. Nothing at or before
+                        // that point may be treated as a fresh prefix
+                        // by a later [check_expand_patterns] scan - in
+                        // particular the just-inserted [text_to_insert]
+                        // itself, which may well contain characters
+                        // that look like a prefix/suffix (e.g. a
+                        // doMath task returning "8*3=24" for a "="/"\n"
+                        // pattern) but were never typed by the user.
+                        // See [_expand_no_match_before_len]. The value
+                        // being overwritten here is saved so undoing
+                        // this fire can put it back - see
+                        // [_undo_expand_prev_boundary].
+                        final int prev_boundary = _expand_no_match_before_len;
+                        _expand_no_match_before_len = text1.length() + text_to_insert.length();
+
+                        arm_undo(undo_before, undo_after, text_to_insert.length());
+                        _undo_expand_prev_boundary = prev_boundary;
+                    }
+                });
+    }
+
     /** Arms the one-shot undo consumed by [try_undo_replacement]: an
      immediate, untouched next backspace will delete
      [replacement_len] characters before the cursor and put [before]
-     (then, for "replace" triggers, [after]) back in its place. */
+     (then, for "replace" triggers, [after]) back in its place. Leaves
+     [_undo_expand_prev_boundary] at -1 ("not applicable") - only
+     [fire_expand]'s callback sets it, right after calling this. */
     private void arm_undo(String before, String after, int replacement_len)
     {
         _undo_before = before;
         _undo_after = after;
         _undo_replacement_len = replacement_len;
+        _undo_expand_prev_boundary = -1;
     }
 
     private void clear_undo()
@@ -458,6 +904,7 @@ public class TaskerTriggerEngine
         _undo_before = null;
         _undo_after = null;
         _undo_replacement_len = 0;
+        _undo_expand_prev_boundary = -1;
     }
 
     public boolean consume_self_edit()

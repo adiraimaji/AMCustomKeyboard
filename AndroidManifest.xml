@@ -37,6 +37,11 @@
         android:name=".KeymapBuilderActivity"
         android:label="@string/keymap_builder_activity_title"
         android:windowSoftInputMode="adjustResize" />
+
+    <activity
+        android:name=".TaskerAutomationGuideActivity"
+        android:label="@string/tasker_guide_activity_title"
+        android:theme="@style/settingsTheme" />
   </application>
 
   <!-- To query enabled input methods for voice IME detection -->

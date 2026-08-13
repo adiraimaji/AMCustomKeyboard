@@ -50,6 +50,17 @@ public abstract class ListGroupPreference<E> extends PreferenceGroup
   /** The label to display on the item for a given value. */
   abstract String label_of_value(E value, int i);
 
+  /** The icon resource id to display on the item for a given value.
+   Overrideable - defaults to the same generic icon used everywhere
+   else in Settings. A subclass (e.g. LayoutsPreference) can return
+   something more specific per item, such as a different icon for a
+   Keymap row than for a plain Layout row. */
+  int icon_of_value(E value, int i)
+  {
+    return R.drawable.ic_pref_default;
+  }
+
+
   /** Called every time the list changes and allows to change the "Add" button
       appearance.
       [prev_btn] is the previously attached button, might be null. */
@@ -222,7 +233,7 @@ public abstract class ListGroupPreference<E> extends PreferenceGroup
       _index = index;
       setPersistent(false);
       setTitle(label_of_value(value, index));
-      setIcon(R.drawable.ic_pref_default);
+      setIcon(icon_of_value(value, index));
       if (should_allow_remove_item(value))
         setWidgetLayoutResource(R.layout.pref_listgroup_item_widget);
     }

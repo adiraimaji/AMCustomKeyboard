@@ -15,7 +15,15 @@ import java.util.Map;
  one OUTPUT mapped to a comma-separated list of KEYS that all produce
  it, e.g. {"keymap_name": "x", "\u0b85": "a", "\u0b86": "aa,A"}.
  A literal comma inside a key is written as "\," (backslash-escaped),
- same convention used everywhere else in the app. */
+ same convention used everywhere else in the app.
+
+ Also supports one additional shape needed by the Tasker Automation
+ config: a top-level object where every value is a plain string
+ EXCEPT one specific key, whose value is an array of nested flat
+ objects (see [parse_object_with_array_field]) - used for
+ "amck_patterns". This is intentionally narrow (a single named
+ array field, one level of nesting) rather than a general JSON parser,
+ since that's all any caller currently needs. */
 public final class KeymapJsonUtils
 {
     private KeymapJsonUtils() {}
@@ -41,9 +49,46 @@ public final class KeymapJsonUtils
         }
     }
 
+    /** Result of [parse_object_with_array_field]: every plain
+     "key":"string value" pair (in encounter order, excluding the one
+     array field), plus the array field's own entries - each element
+     of the array is itself a flat {"key":"value", ...} object,
+     represented the same way [parse_flat_object] would. [array_field_present]
+     distinguishes "the key was present with an empty array" from "the
+     key wasn't present at all" - both leave [array_objects] empty. */
+    public static final class MixedObjectResult
+    {
+        public final List<Map.Entry<String, String>> string_entries;
+        public final List<List<Map.Entry<String, String>>> array_objects;
+        public final boolean array_field_present;
+
+        public MixedObjectResult(List<Map.Entry<String, String>> string_entries_,
+                                 List<List<Map.Entry<String, String>>> array_objects_,
+                                 boolean array_field_present_)
+        {
+            string_entries = string_entries_;
+            array_objects = array_objects_;
+            array_field_present = array_field_present_;
+        }
+    }
+
     public static List<Map.Entry<String, String>> parse_flat_object(String json) throws ParseError
     {
-        List<Map.Entry<String, String>> result = new ArrayList<>();
+        int[] pos = new int[]{ 0 };
+        return parse_flat_object_body(json, pos, json.length());
+    }
+
+    /** Parses a top-level {"key":"value", ...} object, same as
+     [parse_flat_object], except that [array_field_key]'s value must be
+     a JSON array of flat objects rather than a string - every other
+     key must still have a plain string value, same as
+     [parse_flat_object]. */
+    public static MixedObjectResult parse_object_with_array_field(String json, String array_field_key) throws ParseError
+    {
+        List<Map.Entry<String, String>> string_entries = new ArrayList<>();
+        List<List<Map.Entry<String, String>>> array_objects = new ArrayList<>();
+        boolean array_field_present = false;
+
         int len = json.length();
         int i = skip_ws(json, 0, len);
         if (i >= len || json.charAt(i) != '{')
@@ -51,7 +96,7 @@ public final class KeymapJsonUtils
         i++;
         i = skip_ws(json, i, len);
         if (i < len && json.charAt(i) == '}')
-            return result;
+            return new MixedObjectResult(string_entries, array_objects, array_field_present);
 
         while (true)
         {
@@ -65,12 +110,56 @@ public final class KeymapJsonUtils
                 throw new ParseError("Expected ':' after key \"" + key + "\"");
             i++;
             i = skip_ws(json, i, len);
-            if (i >= len || json.charAt(i) != '"')
-                throw new ParseError("Expected a string value for key \"" + key + "\"");
-            pos[0] = i;
-            String value = parse_json_string(json, pos, len);
-            i = pos[0];
-            result.add(new AbstractMap.SimpleEntry<>(key, value));
+
+            if (key.equals(array_field_key))
+            {
+                if (i >= len || json.charAt(i) != '[')
+                    throw new ParseError("Expected an array for key \"" + key + "\"");
+                i++;
+                i = skip_ws(json, i, len);
+                array_field_present = true;
+                if (i < len && json.charAt(i) == ']')
+                {
+                    i++;
+                }
+                else
+                {
+                    while (true)
+                    {
+                        i = skip_ws(json, i, len);
+                        if (i >= len || json.charAt(i) != '{')
+                            throw new ParseError("Expected an object inside \"" + key + "\" near position " + i);
+                        int[] op = new int[]{ i };
+                        List<Map.Entry<String, String>> obj = parse_flat_object_body(json, op, len);
+                        array_objects.add(obj);
+                        i = skip_ws(json, op[0], len);
+                        if (i < len && json.charAt(i) == ',')
+                        {
+                            i++;
+                            continue;
+                        }
+                        else if (i < len && json.charAt(i) == ']')
+                        {
+                            i++;
+                            break;
+                        }
+                        else
+                        {
+                            throw new ParseError("Expected ',' or ']' near position " + i + " in \"" + key + "\"");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if (i >= len || json.charAt(i) != '"')
+                    throw new ParseError("Expected a string value for key \"" + key + "\"");
+                pos[0] = i;
+                String value = parse_json_string(json, pos, len);
+                i = pos[0];
+                string_entries.add(new AbstractMap.SimpleEntry<>(key, value));
+            }
+
             i = skip_ws(json, i, len);
             if (i < len && json.charAt(i) == ',')
             {
@@ -86,6 +175,63 @@ public final class KeymapJsonUtils
                 throw new ParseError("Expected ',' or '}' near position " + i);
             }
         }
+        return new MixedObjectResult(string_entries, array_objects, array_field_present);
+    }
+
+    /** Parses a single flat {"key":"value", ...} object starting at
+     [pos[0]] (which must point at the opening '{'), advancing
+     [pos[0]] to just past the matching closing '}'. Shared by
+     [parse_flat_object] (the whole document is one such object) and
+     [parse_object_with_array_field] (each array element is one). */
+    private static List<Map.Entry<String, String>> parse_flat_object_body(String json, int[] pos, int len) throws ParseError
+    {
+        List<Map.Entry<String, String>> result = new ArrayList<>();
+        int i = skip_ws(json, pos[0], len);
+        if (i >= len || json.charAt(i) != '{')
+            throw new ParseError("Expected '{' near position " + i);
+        i++;
+        i = skip_ws(json, i, len);
+        if (i < len && json.charAt(i) == '}')
+        {
+            pos[0] = i + 1;
+            return result;
+        }
+
+        while (true)
+        {
+            i = skip_ws(json, i, len);
+            if (i >= len || json.charAt(i) != '"')
+                throw new ParseError("Expected a key string near position " + i);
+            int[] kp = new int[]{ i };
+            String key = parse_json_string(json, kp, len);
+            i = skip_ws(json, kp[0], len);
+            if (i >= len || json.charAt(i) != ':')
+                throw new ParseError("Expected ':' after key \"" + key + "\"");
+            i++;
+            i = skip_ws(json, i, len);
+            if (i >= len || json.charAt(i) != '"')
+                throw new ParseError("Expected a string value for key \"" + key + "\"");
+            kp[0] = i;
+            String value = parse_json_string(json, kp, len);
+            i = kp[0];
+            result.add(new AbstractMap.SimpleEntry<>(key, value));
+            i = skip_ws(json, i, len);
+            if (i < len && json.charAt(i) == ',')
+            {
+                i++;
+                continue;
+            }
+            else if (i < len && json.charAt(i) == '}')
+            {
+                i++;
+                break;
+            }
+            else
+            {
+                throw new ParseError("Expected ',' or '}' near position " + i);
+            }
+        }
+        pos[0] = i;
         return result;
     }
 

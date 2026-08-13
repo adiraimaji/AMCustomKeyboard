@@ -291,6 +291,15 @@ public class Keyboard2 extends InputMethodService
     _currentSpecialLayout = refresh_special_layout();
     _keyboard_layout_view.setKeyboard(current_layout());
     refresh_keymap();
+    // Pause Tasker trigger/expand-pattern detection while editing a
+    // field that belongs to this app's own UI (namely the Tasker
+    // Automation and keymap JSON editor dialogs) - typing the very
+    // prefix/suffix/trigger characters being configured, or JSON
+    // syntax in general, would otherwise misfire tasks or mangle the
+    // JSON being edited. Any other app, including one editing its
+    // own similarly-shaped JSON, is unaffected.
+    TaskerTriggerEngine.get().set_paused(
+            info.packageName != null && info.packageName.equals(getPackageName()));
     _keyeventhandler.started(_config);
     setInputView(_keyboard_container_view);
     Logs.debug_startup_input_view(info, _config);
@@ -398,6 +407,13 @@ public class Keyboard2 extends InputMethodService
     super.onFinishInputView(finishingInput);
     _keyboard_layout_view.reset();
     KeymapEngine.get().reset();
+    // The keyboard is being hidden/closed (user dismissed it, switched
+    // app, etc.) without necessarily a matching onStartInputView ever
+    // following for this field again. Any Tasker call still in flight
+    // must be invalidated now, or its result/timeout-fallback can land
+    // later in whatever field happens to be focused at that point,
+    // even with the keyboard no longer showing.
+    TaskerTriggerEngine.get().new_field_started();
   }
 
   @Override

@@ -1,0 +1,12 @@
+<!-- ic_cat_clipboard.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000" android:strokeColor="#3478F6" android:strokeWidth="1.6"
+        android:pathData="M7,5 H17 V20 H7 Z"/>
+    <path android:fillColor="#3478F6"
+        android:pathData="M9,3.5 H15 V6 H9 Z"/>
+    <path android:fillColor="#00000000" android:strokeColor="#3478F6" android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:pathData="M9.5,10 H14.5 M9.5,13 H14.5 M9.5,16 H12.5"/>
+</vector>

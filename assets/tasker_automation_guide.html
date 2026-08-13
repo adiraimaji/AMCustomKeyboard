@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tasker Automation Guide</title>
+<style>
+    /* ---------------------------------------------------------------
+       Same visual language as AM Tasker Plugins' PluginDetailActivity
+       (PluginDocs.style()) - hero header, white rounded cards, blue
+       section titles with a yellow left border, field/example/outvar
+       blocks - so this guide and a plugin's own detail page read as
+       one family. The one addition that template doesn't have is the
+       pill "jump to section" nav right under the hero.
+       --------------------------------------------------------------- */
+    :root{
+        --brand-blue:#0579c7;
+        --brand-blue-dark:#045a94;
+        --brand-yellow:#fdbd00;
+    }
+    * { box-sizing: border-box; }
+    html, body { max-width: 100%; overflow-x: hidden; }
+    body {
+        margin: 0; padding: 0 0 32px 0;
+        background: #f2f4f7;
+        font-family: -apple-system, Roboto, 'Segoe UI', sans-serif;
+        color: #2b2f33;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+    }
+    .hero {
+        background: linear-gradient(135deg, var(--brand-blue), var(--brand-blue-dark));
+        color: #ffffff; padding: 22px 20px 26px 20px;
+    }
+    .hero .icon-badge {
+        width: 64px; height: 64px; border-radius: 18px;
+        background: #ffffff;
+        border: 3px solid var(--brand-yellow);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 10px;
+        font-size: 30px;
+    }
+    .hero h1 { margin: 6px 0 4px 0; font-size: 22px; }
+    .hero p { margin: 0; opacity: 0.92; font-size: 14px; line-height: 1.4; }
+
+    /* Jump-to-section pill nav - the one piece not in PluginDetailActivity's
+       template, kept because a 10-section guide needs quick navigation a
+       single plugin's detail page never did. */
+    .toc-card {
+        background: #ffffff; border-radius: 14px;
+        margin: 14px 14px 0 14px; padding: 14px 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+        display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .toc-card a {
+        text-decoration: none;
+        font-size: 12.5px; font-weight: 700;
+        color: var(--brand-blue-dark);
+        background: #eef6fc;
+        border: 1px solid #d7e9f5;
+        padding: 7px 12px;
+        border-radius: 999px;
+        white-space: nowrap;
+    }
+
+    .card {
+        background: #ffffff; border-radius: 14px;
+        margin: 14px 14px 0 14px; padding: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+    }
+    .section-title {
+        color: var(--brand-blue); font-size: 16px; font-weight: 700;
+        border-left: 4px solid var(--brand-yellow); padding-left: 10px;
+        margin: 0 0 10px 0;
+    }
+    .field-name { font-weight: 700; color: #1c1c1c; font-size: 15px; }
+    .field-meta { display: inline-block; background: #eef3f8; color: var(--brand-blue);
+        font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 8px;
+        margin-left: 6px; vertical-align: middle; }
+    .field-block { padding: 10px 0; border-bottom: 1px solid #eef0f2; }
+    .field-block:last-child { border-bottom: none; }
+    .example-chip { display: inline-block; background: #eef6fc; color: #0b5a8a;
+        font-family: monospace; font-size: 12.5px; padding: 3px 8px; border-radius: 6px;
+        margin: 3px 4px 0 0; border: 1px solid #d7e9f5;
+        white-space: normal; word-break: break-word; max-width: 100%; }
+    .default-chip { display: inline-block; background: #fff8e1; color: #8a6d00;
+        font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 8px;
+        margin-top: 6px; }
+    .desc { font-size: 13.5px; line-height: 1.5; color: #444; margin-top: 6px; }
+    .steps { margin: 0; padding-left: 20px; }
+    .steps li { margin-bottom: 8px; font-size: 13.5px; line-height: 1.5; color: #333; }
+    .example-block { background: #d7e9f5; border: 1px solid var(--brand-blue); border-radius: 10px;
+        padding: 14px; margin-bottom: 12px; }
+    .example-block:last-child { margin-bottom: 0; }
+    .example-row { margin-bottom: 10px; }
+    .example-row:last-child { margin-bottom: 0; }
+    .example-label { font-size: 11px; color: #0b5a8a; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+    .example-value { font-family: monospace; font-size: 13px; color: #1c1c1c;
+        background: #ffffff; border: 1px solid #d7e9f5; border-radius: 6px;
+        padding: 7px 10px; white-space: pre-wrap; word-break: break-word;
+        overflow-wrap: anywhere; }
+    .example-plain { font-size: 13px; color: #333; line-height: 1.5; }
+    .example-mode-badge { display: inline-block; background: var(--brand-blue); color: #ffffff;
+        font-size: 11px; font-weight: 800; letter-spacing: 0.6px; padding: 3px 10px;
+        border-radius: 6px; }
+    .example-output-header { display: inline-block; background: var(--brand-yellow); color: #4a3900;
+        font-size: 11px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+        padding: 3px 10px; border-radius: 6px; margin: 12px 0 8px 0; }
+    .outvar-block { border: 1px solid var(--brand-yellow); border-radius: 10px; padding: 12px;
+        margin-bottom: 10px; background: #fff9db; }
+    .outvar-block:last-child { margin-bottom: 0; }
+    .outvar-name { display: inline-block; font-family: monospace; color: #045a94;
+        font-weight: 700; font-size: 13.5px; background: #eef6fc; padding: 3px 9px;
+        border-radius: 6px; word-break: break-word; }
+    .outvar-meaning { font-size: 13px; color: #444; line-height: 1.5; margin-top: 8px; }
+    ul.plain { margin: 0; padding-left: 20px; }
+    ul.plain li { font-size: 13.5px; line-height: 1.6; color: #333; margin-bottom: 4px; }
+    ul.usecases li { list-style: none; margin-bottom: 6px; font-size: 13.5px; color: #333; }
+    ul.usecases li:before { content: "✓ "; color: #1e7e34; font-weight: 700; }
+    ul.errors li { color: #b02a2a; font-size: 13.5px; margin-bottom: 6px; line-height: 1.5; }
+    ul.tips li { color: #1e6b3a; font-size: 13.5px; margin-bottom: 6px; line-height: 1.5; }
+    ul.reqs li { color: #7a5200; font-size: 13.5px; margin-bottom: 6px; line-height: 1.5; }
+    .desc a, li a { color: var(--brand-blue); font-weight: 600; text-decoration: none;
+        word-break: break-word; }
+    .desc code, li code, .field-name code { background: #eef0f2; color: #b02a2a; padding: 1px 6px;
+        border-radius: 4px; font-family: monospace; font-size: 12.5px;
+        word-break: break-word; }
+    pre.setup-pre { background: #1e1e1e; color: #d4d4d4; font-family: monospace;
+        font-size: 12px; line-height: 1.6; padding: 12px; border-radius: 10px;
+        white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+        margin: 6px 0 10px 0; }
+    .badge-row { margin: 2px 0 10px 0; }
+    .method-badge { display:inline-block; font-size:11px; font-weight:800; letter-spacing:.4px;
+        padding:3px 10px; border-radius:6px; color:#fff; margin-right:6px; }
+    .method-badge.manual { background:#5b5d66; }
+    .method-badge.plugin { background:var(--brand-blue); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+    <div class="icon-badge">⌨️</div>
+    <h1>Tasker Automation</h1>
+    <p>Type a short trigger anywhere you're typing and the keyboard hands your text to a Tasker task, then drops the task's answer straight back into the field - no app-switching required.</p>
+</div>
+
+<div class="toc-card">
+    <a href="#idea">The idea</a>
+    <a href="#setup">One-time setup</a>
+    <a href="#config">Config file</a>
+    <a href="#replace">Replace trigger</a>
+    <a href="#append">Append trigger</a>
+    <a href="#expand">Expand patterns</a>
+    <a href="#task">Building the Tasker task</a>
+    <a href="#vars">Variables reference</a>
+    <a href="#undo">Undo &amp; edge cases</a>
+    <a href="#troubleshoot">Troubleshooting</a>
+</div>
+
+<div id="idea" class="card">
+    <div class="section-title">The idea</div>
+    <div class="desc">Tasker Automation lets you define your own tiny "commands" that work in <b>any</b> text field, in <b>any</b> app - a note, a chat, an email, a form. You type a short trigger, the keyboard silently sends the surrounding text to a Tasker task, and whatever that task sends back is inserted for you.</div>
+    <div class="example-block" style="margin-top:12px;">
+        <div class="example-row"><div class="example-plain">You type <b>##fix</b> &#8594; Keyboard calls Tasker task "fix" &#8594; Task replies with text &#8594; Keyboard inserts the reply</div></div>
+    </div>
+    <div class="desc">Because the task itself is just a normal Tasker task, it can do anything Tasker can do: call an AI/HTTP API, do maths, look up a contact, translate text, format a date, run a local script - the keyboard doesn't care, it only cares about the text that comes back.</div>
+    <div class="default-chip" style="display:block; margin-top:12px; background:#eef6fc; color:#0b5a8a;">Three trigger styles, one engine: <code>##</code> replace, <code>@@</code> append, and open-ended <code>..</code> expand patterns. They all call Tasker the same way; they only differ in how much of the field gets sent and how the result is inserted - each is covered in its own section below.</div>
+</div>
+
+<div id="setup" class="card">
+    <div class="section-title">One-time setup</div>
+    <div class="desc">Before any trigger will work, three things need to be true:</div>
+    <ol class="steps">
+        <li><b>Tasker is installed</b> on the device (the free trial or paid version both work).</li>
+        <li><b>Allow External Access is enabled</b> in Tasker, at <code>Tasker &#8594; ☰ Menu &#8594; Preferences &#8594; Misc &#8594; Allow External Access</code>. This is what lets any other app (including this keyboard) ask Tasker to run a task and get a reply back.</li>
+        <li><b>The task exists in Tasker</b>, and its name matches exactly what you put in the keyboard's config (case-sensitive) - see the Config file section below.</li>
+    </ol>
+    <ul class="errors">
+        <li>If you skip step 2: every trigger will still "fire" (the trigger text disappears), but you'll get a toast saying Tasker couldn't be reached, and nothing useful will be inserted.</li>
+    </ul>
+    <div class="desc">Need ready-made example tasks instead of building one from scratch? Open <code>Settings &#8594; Tasker Automation &#8594; Get AM Tasker Plugins</code> for a small collection of open-source starter tasks and plugin actions you can import - including the "AM Custom Keyboard Return" plugin covered under <a href="#task">Building the Tasker task</a> below.</div>
+</div>
+
+<div id="config" class="card">
+    <div class="section-title">The config file</div>
+    <div class="desc">Everything lives in one JSON block, edited from <code>Settings &#8594; Tasker Automation</code>. Open it and you'll see a small editor with line numbers and live validation - it won't let you save invalid JSON.</div>
+    <pre class="setup-pre">{
+  "amck_replace": "##",          // trigger symbol for whole-field replace
+  "amck_append": "@@",           // trigger symbol for insert-in-place
+  "amck_timeout": "15000",       // ms to wait for Tasker's reply
+
+  "runtask1": "Fix Grammar",     // keyword "runtask1" -&gt; Tasker task "Fix Grammar"
+  "translate": "Translate to EN",
+
+  "amck_patterns": [      // optional, open-ended patterns (see below)
+    { "prefix": "..", "suffix": " ", "task": "Calculator" }
+  ]
+}</pre>
+    <div class="field-block">
+        <span class="field-name">amck_replace</span><span class="field-meta">Text</span>
+        <div><span class="example-chip">##</span></div>
+        <div class="desc">Symbol that starts a "replace the whole field" trigger.</div>
+        <div class="default-chip">Default: ##</div>
+    </div>
+    <div class="field-block">
+        <span class="field-name">amck_append</span><span class="field-meta">Text</span>
+        <div><span class="example-chip">@@</span></div>
+        <div class="desc">Symbol that starts an "insert in place" trigger.</div>
+        <div class="default-chip">Default: @@</div>
+    </div>
+    <div class="field-block">
+        <span class="field-name">amck_timeout</span><span class="field-meta">Number (ms)</span>
+        <div><span class="example-chip">15000</span></div>
+        <div class="desc">How long to wait for the task's reply before giving up. Allowed range: 1000-120000.</div>
+        <div class="default-chip">Default: 15000</div>
+    </div>
+    <div class="field-block">
+        <span class="field-name">amck_patterns</span><span class="field-meta">Array</span>
+        <div><span class="example-chip">{ "prefix": "..", "suffix": " ", "task": "Calculator" }</span></div>
+        <div class="desc">List of open-ended <i>prefix ... suffix</i> expanders - see the Expand patterns section below.</div>
+        <div class="default-chip">Default: one example entry</div>
+    </div>
+    <div class="field-block">
+        <span class="field-name">any other key</span><span class="field-meta">Text</span>
+        <div><span class="example-chip">"runtask1": "Fix Grammar"</span></div>
+        <div class="desc">A keyword you'll type after the trigger, mapped to a Tasker task <b>name</b>.</div>
+    </div>
+    <div class="desc" style="margin-top:6px;">Any of the <code>amck_</code> keys can simply be left out - the editor auto-fills the defaults for you and shows them the next time you open it, so you always see (and can override) every setting in one place. <code>amck_replace</code> and <code>amck_append</code> must be different from each other, and you need at least one task keyword configured.</div>
+</div>
+
+<div id="replace" class="card">
+    <div class="section-title">## replace trigger</div>
+    <div class="desc">Type <code>amck_replace</code> immediately followed by a configured keyword (e.g. <code>##runtask1</code>) anywhere in a text field. The moment the last character of the keyword is typed:</div>
+    <ol class="steps">
+        <li><b>The whole field is captured.</b> Everything currently in the field (before and after the trigger you just typed) is read.</li>
+        <li><b>The task runs.</b> The keyword's task launches in Tasker, receiving the field's text (split around where you typed the trigger) as variables.</li>
+        <li><b>The whole field is replaced.</b> Once the task replies, its output text becomes the field's <i>entire</i> new content - anything that was there before is gone.</li>
+    </ol>
+    <div class="example-block">
+        <div class="example-row"><div class="example-label">Config</div><div class="example-value">"runtask1": "Fix Grammar"</div></div>
+        <div class="example-row"><div class="example-label">You type</div><div class="example-value">i seen him yesterday he was'nt happy##runtask1</div></div>
+        <div class="example-output-header">Output</div>
+        <div class="example-row"><div class="example-value">I saw him yesterday; he wasn't happy.</div></div>
+    </div>
+    <div class="desc">The trigger can be typed at the end, in the middle, or even at the very start of the text - it doesn't have to be the last thing in the field, it just marks the spot where the command was entered. The task still receives the full field, split into "before the trigger" / "after the trigger".</div>
+    <ul class="usecases" style="margin-top:10px;">
+        <li>Whole-note grammar/spelling cleanup</li>
+        <li>Tone changes across a whole message</li>
+        <li>Summarizing a paragraph</li>
+        <li>Translating an entire message</li>
+        <li>Reformatting a block of text</li>
+    </ul>
+</div>
+
+<div id="append" class="card">
+    <div class="section-title">@@ append trigger</div>
+    <div class="desc">Works exactly the same way as replace, except only the typed <code>amck_append</code>+keyword text itself gets swapped out - everything else in the field is left completely untouched.</div>
+    <div class="example-block">
+        <div class="example-row"><div class="example-label">Config</div><div class="example-value">"today": "Insert Today Date"</div></div>
+        <div class="example-row"><div class="example-label">You type</div><div class="example-value">Meeting notes — @@today — attendees:</div></div>
+        <div class="example-output-header">Output</div>
+        <div class="example-row"><div class="example-value">Meeting notes — 12 Aug 2026 — attendees:</div></div>
+    </div>
+    <ul class="usecases" style="margin-top:10px;">
+        <li>Dropping in a computed date/time</li>
+        <li>Inserting a converted currency amount</li>
+        <li>Quick translation of one phrase</li>
+        <li>Generating a random ID</li>
+        <li>Looking up a contact's phone number</li>
+    </ul>
+</div>
+
+<div id="expand" class="card">
+    <div class="section-title">.. expand patterns</div>
+    <div class="desc">Replace/append triggers only work with a fixed list of keywords you typed out in the config. Expand patterns are different: they work with <b>any</b> free-form text you type between a <code>prefix</code> and a <code>suffix</code> - nothing to pre-register.</div>
+    <div class="desc">Type <code>prefix</code>, then anything (at least one character), then <code>suffix</code>. As soon as the suffix completes, the text in between is sent to the task as <code>%keyword</code>, and the whole <code>prefix + content + suffix</code> span is swapped for the task's reply - same "insert in place" behaviour as an <code>@@</code> trigger.</div>
+    <div class="example-block">
+        <div class="example-row"><div class="example-label">Config</div><div class="example-value">{ "prefix": "..", "suffix": " ", "task": "Calculator" }</div></div>
+        <div class="example-row"><div class="example-label">You type</div><div class="example-value">Total: ..12*3.5 </div></div>
+        <div class="example-output-header">Output (the moment the trailing space is typed)</div>
+        <div class="example-row"><div class="example-value">Total: 42</div></div>
+    </div>
+    <div class="desc">Here <code>%keyword</code> received by the task is <code>12*3.5</code> - the task just needs a "Variable Set" action doing the arithmetic and sending it back. You can define as many expand patterns as you like, each with its own prefix/suffix/task, as long as no two entries share the exact same prefix+suffix pair.</div>
+    <ul class="usecases" style="margin-top:10px;">
+        <li>Unit conversions, e.g. ~10km</li>
+        <li>Quick inline maths</li>
+        <li>Smarter emoji/shortcut expansion</li>
+        <li>Looking something up online and pasting the result</li>
+        <li>Snippet expansion with dynamic content</li>
+    </ul>
+</div>
+
+<div id="task" class="card">
+    <div class="section-title">Building the Tasker task</div>
+    <div class="desc">Any task you reference from the config just needs to exist in Tasker under that exact name - you don't need a Profile or Event to "catch" the call, Tasker's own External Access receiver handles that automatically once it's enabled (see One-time setup above). You only need to make sure the task <b>sends its answer back</b> before it finishes. There are two ways to do that:</div>
+
+    <div class="badge-row">
+        <span class="method-badge manual">METHOD 1</span><b>Tasker's built-in "Send Intent" action</b>
+    </div>
+    <ol class="steps">
+        <li><b>Create the task</b> in Tasker and give it the name you used in the config (e.g. <code>Fix Grammar</code>).</li>
+        <li><b>Use the input variables.</b> Inside the task you can reference <code>%text1</code>, <code>%text2</code> and <code>%keyword</code> directly (see the Variables reference below) - do whatever processing you need and store the result in a local variable, e.g. <code>%result</code>.</li>
+        <li><b>Add a final "Send Intent" action</b> with these fields:
+            <pre class="setup-pre">Action:  &lt;your app id&gt;.TASKER_RESULT
+Extra:   requestid:%requestid
+Extra:   text:%result
+Target:  Broadcast Receiver</pre>
+            <div class="desc">Replace <code>&lt;your app id&gt;</code> with this app's own package name (e.g. <code>com.adiraimaji.customkeyboard</code>, or with a <code>.debug</code> suffix on a debug build) - the keyboard is listening for exactly this broadcast, tagged with the same <code>%requestid</code> it handed the task, so the reply gets matched to the right in-progress request even if you fire off several triggers back to back.</div>
+        </li>
+    </ol>
+    <ul class="errors">
+        <li>Don't use Tasker's built-in "Return" value instead - it might seem natural to add a Task &#8594; Return action, but Tasker's own ACTION_TASK_COMPLETE/Return mechanism doesn't reliably deliver a value to apps outside Tasker. The Send Intent broadcast above is the one that's actually being listened for.</li>
+    </ul>
+
+    <div class="badge-row" style="margin-top:16px;">
+        <span class="method-badge plugin">METHOD 2</span><b>The "AM Custom Keyboard Return" plugin action (no manual Send Intent needed)</b>
+    </div>
+    <div class="desc">If you have the companion <b>AM Tasker Plugins</b> app installed, it ships a ready-made plugin action - <b>AM Custom Keyboard Return</b> - that does exactly what Method 1's Send Intent action does, with the action name, package, target, and <code>requestid</code> wiring all pre-filled for you. The only thing you fill in is the text to send back.</div>
+    <ol class="steps">
+        <li><b>Install AM Tasker Plugins</b> - get it from <a href="https://github.com/adiraimaji/AMTaskerPluginsReleases/releases">github.com/adiraimaji/AMTaskerPluginsReleases</a> (also reachable from <code>Settings &#8594; Tasker Automation &#8594; Get AM Tasker Plugins</code>).</li>
+        <li><b>Add its action</b> as the last step of your task: <code>Plugin &#8594; AM Tasker Plugins &#8594; AM Custom Keyboard Return</code>.</li>
+        <li><b>Fill in "Return Text"</b> with the value to send back (type it directly, or tap the arrow button to insert a Tasker variable such as <code>%result</code>).</li>
+        <li>That's it - <code>requestid</code> is already hardcoded inside the plugin to the Tasker variable <code>%requestid</code>, so it's always sent correctly without you having to add or edit anything for it.</li>
+    </ol>
+    <div class="desc">Method 2 is the faster, less error-prone option since there's no action string, extras, or target to type out by hand - it's a good default unless you'd rather keep your tasks free of an extra app dependency, in which case Method 1 works exactly the same way from Tasker's own broadcast.</div>
+</div>
+
+<div id="vars" class="card">
+    <div class="section-title">Variables reference</div>
+    <div class="desc" style="margin-bottom:10px;"><b>What the task receives</b></div>
+    <div class="outvar-block">
+        <div class="outvar-name">%text1</div>
+        <div class="outvar-meaning">The field's text <i>before</i> the trigger/pattern you typed (with the trigger itself removed). Always set, can be empty.</div>
+    </div>
+    <div class="outvar-block">
+        <div class="outvar-name">%text2</div>
+        <div class="outvar-meaning">The field's text <i>after</i> the trigger/pattern. Left completely <b>unset</b> (not just empty) when there's nothing there, so a Tasker "If %text2 Set" check behaves as expected.</div>
+    </div>
+    <div class="outvar-block">
+        <div class="outvar-name">%keyword</div>
+        <div class="outvar-meaning">Just the keyword itself for a ##/@@ trigger (e.g. <code>runtask1</code>), or the free-form text between prefix and suffix for an expand pattern. Never includes the trigger symbols.</div>
+    </div>
+    <div class="outvar-block">
+        <div class="outvar-name">%requestid</div>
+        <div class="outvar-meaning">A unique id for this specific call - echo it back unchanged (Method 1: as the <code>requestid</code> extra; Method 2: automatic, nothing to do).</div>
+    </div>
+    <div class="desc" style="margin:14px 0 10px 0;"><b>What the task must send back</b></div>
+    <div class="outvar-block">
+        <div class="outvar-name">requestid</div>
+        <div class="outvar-meaning">The exact same value received in <code>%requestid</code>.</div>
+    </div>
+    <div class="outvar-block">
+        <div class="outvar-name">text</div>
+        <div class="outvar-meaning">The text you want inserted into the field.</div>
+    </div>
+</div>
+
+<div id="undo" class="card">
+    <div class="section-title">Undo &amp; a few edge cases</div>
+    <ul class="plain">
+        <li><b>One-shot undo:</b> right after a task's result lands in the field, a single, immediate backspace swaps it back for what you originally typed (the trigger+keyword, or the matched expand span) instead of deleting one character. Doing anything else first - typing another character, moving the cursor - forfeits that undo, and a backspace after that behaves normally.</li>
+        <li><b>Typo tolerance:</b> if you mistype a keyword (e.g. <code>##ond</code> instead of <code>##one</code>) and backspace to correct it, the keyboard re-reads the text that's actually still sitting in the field, so finishing the correct keyword still fires the trigger - you don't have to retype the whole thing from scratch.</li>
+        <li><b>Results are toasted too:</b> whenever a task replies successfully, its raw output is also shown briefly as a toast - handy while you're testing a new task, so you can see exactly what came back even before checking the field.</li>
+    </ul>
+</div>
+
+<div id="troubleshoot" class="card">
+    <div class="section-title">Troubleshooting</div>
+    <ul class="errors">
+        <li><b>"Could not reach Tasker. Is it installed and is 'Allow External Access' enabled?"</b> - Tasker isn't installed, or Allow External Access is off. Turn it on at Tasker &#8594; Preferences &#8594; Misc, then try again.</li>
+        <li><b>"Tasker task timed out or did not respond"</b> - the task never sent back a matching reply within <code>amck_timeout</code> ms. If using Method 1, double-check the Send Intent's action string, the <code>requestid</code> extra, and that its target is Broadcast Receiver. If using Method 2 (the plugin), confirm AM Tasker Plugins is installed and the action is the last step in the task. If the task genuinely needs longer (e.g. a slow API call), raise <code>amck_timeout</code> (max 120000 ms).</li>
+        <li><b>Nothing happens at all when I finish typing the trigger</b> - check the keyword in the config matches exactly what you typed (case-sensitive), and that <code>amck_replace</code>/<code>amck_append</code> aren't accidentally the same symbol as each other.</li>
+        <li><b>An expand pattern never fires</b> - make sure there's at least one character of content between the prefix and suffix; an empty match (prefix immediately followed by suffix) is ignored on purpose, so ordinary punctuation doesn't misfire.</li>
+    </ul>
+</div>
+
+</body>
+</html>

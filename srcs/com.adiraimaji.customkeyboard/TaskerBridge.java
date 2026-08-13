@@ -70,12 +70,25 @@ public final class TaskerBridge
 
     private TaskerBridge() {}
 
-    /** Runs [task_name], passing [input_text] into it as the local
-     variable %text and a freshly generated correlation id as
-     %requestid, then waits up to [timeout_ms] for that same task to
-     send back a matching "Send Intent" broadcast, reporting its
-     "text" extra asynchronously via [callback]. */
-    public static void run_task(final Context ctx, String task_name, String input_text,
+    /** Runs [task_name], passing in:
+      %text1     - the field's text before the matched trigger/pattern
+                   span, with that span itself removed (always set,
+                   possibly to an empty string)
+      %text2     - the field's text after the matched span - left
+                   UNSET (not merely empty) when there's nothing there,
+                   so Tasker's own "is set" checks work as expected
+      %keyword   - just the keyword/content itself, e.g. "one" for
+                   "##one"/"@@one", or the free-form text between an
+                   expand pattern's prefix and suffix - never the
+                   trigger/prefix/suffix symbols themselves
+      %requestid - a freshly generated correlation id, echoed back by
+                   the task's own "Send Intent" so the reply can be
+                   matched to this specific call
+     then waits up to [timeout_ms] for that same task to send back a
+     matching "Send Intent" broadcast, reporting its "text" extra
+     asynchronously via [callback]. */
+    public static void run_task(final Context ctx, String task_name,
+                                String text1, String text2, String keyword,
                                 long timeout_ms, final ResultCallback callback)
     {
         final String request_id = System.currentTimeMillis() + "-" + request_counter.incrementAndGet();
@@ -86,8 +99,15 @@ public final class TaskerBridge
 
         ArrayList<String> var_names = new ArrayList<>();
         ArrayList<String> var_values = new ArrayList<>();
-        var_names.add("%text");
-        var_values.add(input_text);
+        var_names.add("%text1");
+        var_values.add(text1 != null ? text1 : "");
+        if (text2 != null && !text2.isEmpty())
+        {
+            var_names.add("%text2");
+            var_values.add(text2);
+        }
+        var_names.add("%keyword");
+        var_values.add(keyword != null ? keyword : "");
         var_names.add("%requestid");
         var_values.add(request_id);
         request.putStringArrayListExtra(EXTRA_VAR_NAMES_LIST, var_names);

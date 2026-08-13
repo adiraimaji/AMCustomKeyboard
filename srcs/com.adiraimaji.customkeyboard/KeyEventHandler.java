@@ -94,7 +94,12 @@ public final class KeyEventHandler
     _space_bar_auto_complete = conf.space_bar_auto_complete;
     _last_action = null;
     KeymapEngine.get().reset();
-    TaskerTriggerEngine.get().reset();
+    // Not TaskerTriggerEngine.reset(): this is a genuine field/app
+    // focus change, so any Tasker call still in flight from whatever
+    // field was previously focused must be invalidated (see
+    // [TaskerTriggerEngine.new_field_started]) - otherwise its result
+    // can land in this newly-focused field instead.
+    TaskerTriggerEngine.get().new_field_started();
   }
 
   public void selection_updated(int oldSelStart, int newSelStart, int newSelEnd)
@@ -154,7 +159,7 @@ public final class KeyEventHandler
       case Char: send_text(String.valueOf(key.getChar()), _last_key_is_swipe); break;
       case String: send_text(key.getString(), _last_key_is_swipe); break;
       case Event: _recv.handle_event_key(key.getEvent()); break;
-      case Keyevent: send_key_down_up(key.getKeyevent()); break;
+      case Keyevent: send_key_down_up_checking_expand(key.getKeyevent()); break;
       case Modifier: break;
       case Editing: handle_editing_key(key.getEditing()); break;
       case Compose_pending: _recv.set_compose_pending(true); break;
@@ -266,6 +271,47 @@ public final class KeyEventHandler
     }
   }
 
+  /** Same as [send_key_down_up], but also gives the expand-pattern
+   engine a chance to see the result. KEYCODE_ENTER (and its numpad
+   twin) commonly commit a literal "\n" straight into the field, the
+   same as any other committed character - but unlike characters
+   typed via [send_text], key events dispatched through
+   [send_key_down_up] never run through that per-character loop, so
+   an "amck_patterns" entry configured with suffix "\n" would
+   otherwise never get a chance to fire on Enter.
+
+   [conn.sendKeyEvent] only *injects* the key event - unlike
+   [commitText], which edits the field synchronously from the IME's
+   point of view, the actual insertion of "\n" happens on the target
+   app's side (its own key listener reacting to the event), which is
+   NOT guaranteed to have already happened by the time this method
+   returns. Calling [check_expand_patterns] immediately here would
+   frequently read the field's text from just before the newline
+   landed - a real race, not a hypothetical one, and the reason a
+   suffix of "\n" could look for the pattern one character short of
+   where the app's field will very shortly settle. Posting the check
+   instead of calling it inline defers it to the next iteration of
+   the main loop, by which point the injected key event has been
+   dispatched and applied. */
+  void send_key_down_up_checking_expand(int keyCode)
+  {
+    send_key_down_up(keyCode);
+    if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+    {
+      final Context ctx = _recv.getContext();
+      new Handler(Looper.getMainLooper()).post(new Runnable()
+      {
+        public void run()
+        {
+          InputConnection conn = _recv.getCurrentInputConnection();
+          if (conn != null)
+            TaskerTriggerEngine.get().check_expand_patterns(ctx, conn,
+                    _typedword_tracker, _tasker_conn_provider);
+        }
+      });
+    }
+  }
+
   void send_key_down_up(int keyCode)
   {
     send_key_down_up(keyCode, _meta_state);
@@ -310,7 +356,11 @@ public final class KeyEventHandler
       char c = text.charAt(i);
       if (TaskerTriggerEngine.get().handle_char(_recv.getContext(), conn, c,
               _typedword_tracker, _tasker_conn_provider))
+      {
+        TaskerTriggerEngine.get().check_expand_patterns(_recv.getContext(), conn,
+                _typedword_tracker, _tasker_conn_provider);
         continue;
+      }
 
       String s = String.valueOf(c);
       if (!KeymapEngine.get().process(conn, s, _typedword_tracker, is_swipe))
@@ -318,6 +368,8 @@ public final class KeyEventHandler
         conn.commitText(s, 1);
         _typedword.typed(s);
       }
+      TaskerTriggerEngine.get().check_expand_patterns(_recv.getContext(), conn,
+              _typedword_tracker, _tasker_conn_provider);
     }
   }
 
@@ -637,6 +689,8 @@ public final class KeyEventHandler
     {
       TaskerTriggerEngine.get().handle_backspace(_recv.getCurrentInputConnection());
       send_key_down_up(KeyEvent.KEYCODE_DEL);
+      TaskerTriggerEngine.get().check_expand_patterns(_recv.getContext(),
+              _recv.getCurrentInputConnection(), _typedword_tracker, _tasker_conn_provider);
     }
   }
 

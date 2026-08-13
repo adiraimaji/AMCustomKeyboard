@@ -208,6 +208,16 @@ public class LayoutsPreference extends ListGroupPreference<LayoutsPreference.Lay
             label_of_layout(value));
   }
 
+  /** Gives each row its own icon instead of the generic default every
+   ListGroupPreference row gets otherwise. */
+  @Override
+  int icon_of_value(Layout value, int i)
+  {
+    if (value instanceof KeymapEntry)
+      return R.drawable.ic_importjson;
+    return R.drawable.ic_keyboard;
+  }
+
   @Override
   AddButton on_attach_add_button(AddButton prev_btn)
   {

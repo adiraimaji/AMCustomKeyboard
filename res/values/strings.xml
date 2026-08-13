@@ -242,6 +242,9 @@
     <string name="pref_tasker_automation_summary_empty">Not configured</string>
     <string name="pref_tasker_plugins_link_title">Get AM Tasker Plugins</string>
     <string name="pref_tasker_plugins_link_summary">Open-source Tasker plugins for this keyboard (send/return text, request IDs, and more) - opens the releases page</string>
+    <string name="pref_tasker_guide_title">How to use Tasker Automation</string>
+    <string name="pref_tasker_guide_summary">Full walkthrough: triggers, expand patterns, the config format, and how to build the Tasker task side</string>
+    <string name="tasker_guide_activity_title">Tasker Automation Guide</string>
     <string name="tasker_dialog_title">Tasker Automation</string>
     <string name="tasker_error_timeout">Tasker task timed out or did not respond</string>
     <string name="tasker_error_task_failed">Tasker reported the task failed</string>

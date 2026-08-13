@@ -1,0 +1,11 @@
+<!-- ic_cat_style.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000" android:strokeColor="#3478F6" android:strokeWidth="1.6"
+        android:pathData="M12,4 C7,4 3,7.6 3,12 C3,15.5 6,17.5 9,17 C9.6,16.9 10,17.4 9.7,17.9
+                            C9.3,18.6 9.7,19.6 10.5,19.8 C15,20.8 21,17.5 21,12 C21,7.6 17,4 12,4 Z"/>
+    <path android:fillColor="#3478F6"
+        android:pathData="M8,9 a1.3,1.3 0 1,0 0.01,0 Z M12,7 a1.3,1.3 0 1,0 0.01,0 Z
+                            M16,9 a1.3,1.3 0 1,0 0.01,0 Z M17,13 a1.3,1.3 0 1,0 0.01,0 Z"/>
+</vector>
