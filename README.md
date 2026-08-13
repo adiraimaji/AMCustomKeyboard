@@ -30,6 +30,11 @@ Just download the `.apk`, allow installs from unknown sources, and enable it as 
 <td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_5.jpeg" width="220"/></td>
 <td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_6.jpeg" width="220"/></td>
 </tr>
+<tr>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_7.jpeg" width="220"/></td>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_8.jpeg" width="220"/></td>
+<td></td>
+</tr>
 </table>
 </div>
 
@@ -55,9 +60,10 @@ Just download the `.apk`, allow installs from unknown sources, and enable it as 
 16. [Keymap Builder](#keymap-builder)
 17. [Referential Integrity: Rename &amp; Delete Safety](#referential-integrity-rename--delete-safety)
 18. [Dictionary Suggestions with Keymaps](#dictionary-suggestions-with-keymaps)
-19. [Engine Architecture](#engine-architecture)
-20. [Full XML Example](#full-xml-example)
-21. [Quick-Reference Rules Summary](#quick-reference-rules-summary)
+19. [Tasker Automation](#tasker-automation)
+20. [Engine Architecture](#engine-architecture)
+21. [Full XML Example](#full-xml-example)
+22. [Quick-Reference Rules Summary](#quick-reference-rules-summary)
 
 ---
 
@@ -80,6 +86,7 @@ On top of the transliteration engine itself, AMCustomKeyboard ships:
 - **Grouped-only keymap JSON** (output → keys)
 - **Toggle-style keymaps** for reversible mappings (e.g. `a ↔ அ`, `su ↔ சு`)
 - A **Default layout** setting to choose which layout loads when the keyboard opens
+- **Tasker Automation** — typed triggers that hand text off to a Tasker task and insert its result back into the field, with no XML/scripting beyond a small JSON config
 
 ---
 
@@ -540,6 +547,64 @@ Word suggestions stay correctly in sync with keymap transliteration:
 
 ---
 
+## Tasker Automation
+
+AMCustomKeyboard can hand typed text off to [Tasker](https://tasker.joaoapps.com/) and insert the task's returned result directly into the field you're typing in — no scripting beyond a small JSON config. It's configured from **Settings → Tasker Automation**, which contains:
+
+- **Tasker Automation** — opens the JSON config editor (same line-numbered dialog used for keymaps and layouts), with inline validation and a live task count in its summary (e.g. "3 task(s) configured" / "Not configured").
+- **How to use Tasker Automation** — opens an in-app guide (`TaskerAutomationGuideActivity`) walking through triggers, expand patterns, the config format, and how to build the matching Tasker task.
+- **Get AM Tasker Plugins** — links to the companion [AMTaskerPluginsReleases](https://github.com/adiraimaji/AMTaskerPluginsReleases) repo, with Tasker plugins (send/return text, request IDs, and more) for building the Tasker side of a task.
+
+Because this talks to the Tasker app, it requires the `net.dinglisch.android.tasker.PERMISSION_RUN_TASKS` permission (declared in the manifest) and Tasker's own **"Allow External Access"** setting.
+
+### Config JSON format
+
+There is a single, app-wide config (not a list, unlike layouts/keymaps):
+
+```json
+{
+  "amck_replace": "##",
+  "amck_append": "@@",
+  "amck_timeout": "15000",
+  "runtask1": "Task 1",
+  "runtask2": "Task 2",
+  "amck_patterns": [
+    { "prefix": "..", "suffix": " ", "task": "Expand Task 1" }
+  ]
+}
+```
+
+| Key               | Required? | Meaning                                                                                                                                 |
+| ----------------- | :-------: | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `amck_replace`  | Optional | Trigger prefix for**replace-whole-field** commands. Default `"##"`.                                                             |
+| `amck_append`   | Optional | Trigger prefix for**replace-trigger-only** commands. Default `"@@"`.                                                            |
+| `amck_timeout`  | Optional | Milliseconds to wait for a task's result before giving up. Default`"15000"`, must be between 1000 and 120000.                         |
+| any other key     |    —    | A**keyword** mapped to the exact **Tasker task name** to run when that keyword follows a trigger. At least one is required. |
+| `amck_patterns` | Optional | Array of open-ended**expand patterns** (see below). Auto-filled with one example entry if omitted or empty.                       |
+
+`amck_replace` and `amck_append` must be different from each other, and every keyword must be unique. If any of `amck_replace`, `amck_append`, `amck_timeout`, or `amck_patterns` is left out, the app fills in its default and re-saves the config so the stored JSON always matches what's actually in effect — and the config dialog always shows you all of these keys up front (rather than requiring you to know a default exists to override it).
+
+### Triggers: replace vs. append
+
+Given a task keyword `runtask1` mapped to Tasker task `"Task 1"`:
+
+- Typing **`##runtask1`** (the replace trigger + keyword) sends the **entire current field's text** to `"Task 1"` and, on completion, replaces the **whole field** with the task's returned output.
+- Typing **`@@runtask1`** (the append trigger + keyword) runs the same task, but replaces only the **typed `@@runtask1` text itself** with the output, leaving the rest of the field untouched.
+
+### Expand patterns
+
+Each entry in `amck_patterns` describes an open-ended expander, independent of the fixed keyword list above: typing `[prefix]`, then any non-empty text, then `[suffix]` (e.g. `..5+1 ` for prefix `".."` / suffix `" "`) runs `[task]` with that in-between text as `%keyword`, and replaces just that `prefix+content+suffix` span with the result — the same field-editing behavior as an `amck_append` trigger, never the whole field.
+
+### One-shot undo
+
+Right after a trigger's replacement text lands, a single backspace with nothing typed in between swaps it back for the original trigger+keyword text (e.g. back to `@@runtask1`) instead of deleting a character. Pressing backspace again afterward behaves like an ordinary backspace. Typing anything else instead of that one immediate backspace forfeits the undo, and the result is left in place as plain text.
+
+### Errors
+
+If a task times out, fails, or Tasker can't be reached at all (not installed, or "Allow External Access" disabled), the field is left as-is and a short error is shown rather than silently swallowing the failed command.
+
+---
+
 ## Engine Architecture
 
 Input flows through the following pipeline, from raw touch to final committed text:
@@ -568,16 +633,19 @@ InputConnection
 
 **Component responsibilities:**
 
-| Component                      | Responsibility                                                                                                                                                                      |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Pointers.java`              | Multi-touch tracking, swipe detection, long press, sliding keys, modifier latching/locking, gesture handling                                                                        |
-| `KeyModifier.java`           | Shift / Ctrl / Alt / Meta / Fn, compose keys, dead keys, Hangul composition, gesture modifiers, selection mode                                                                      |
-| `Keymap.java`                | Loads a keymap's JSON, stores its mappings, provides lookups                                                                                                                        |
-| `KeymapManager.java`         | Persists all saved keymaps, resolves by name, handles add/remove/rename                                                                                                             |
-| `KeymapEngine.java`          | Prefix matching, longest-sequence replacement, live conversion, toggle-style cycling, word-tracker synchronization, swipe-gating via`swipekeymap`                                 |
-| `KeymapXmlAttrUtils.java`    | Reads/writes the`name`, `keymap`, and `swipekeymap` attributes on a layout's raw XML, used by both the Layout dialog's Keyboard Attributes card and rename/delete propagation |
-| `KeymapBuilderActivity.java` | The guided keymap editor — rows, quick add, duplicate detection, search/filter, raw JSON import                                                                                    |
-| `LayoutsPreference.java`     | The Settings list combining Layout and Keymap rows, default layout selection, referential-integrity enforcement on rename/delete                                                    |
+| Component                           | Responsibility                                                                                                                                                                                 |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Pointers.java`                   | Multi-touch tracking, swipe detection, long press, sliding keys, modifier latching/locking, gesture handling                                                                                   |
+| `KeyModifier.java`                | Shift / Ctrl / Alt / Meta / Fn, compose keys, dead keys, Hangul composition, gesture modifiers, selection mode                                                                                 |
+| `Keymap.java`                     | Loads a keymap's JSON, stores its mappings, provides lookups                                                                                                                                   |
+| `KeymapManager.java`              | Persists all saved keymaps, resolves by name, handles add/remove/rename                                                                                                                        |
+| `KeymapEngine.java`               | Prefix matching, longest-sequence replacement, live conversion, toggle-style cycling, word-tracker synchronization, swipe-gating via`swipekeymap`                                            |
+| `KeymapXmlAttrUtils.java`         | Reads/writes the`name`, `keymap`, and `swipekeymap` attributes on a layout's raw XML, used by both the Layout dialog's Keyboard Attributes card and rename/delete propagation            |
+| `KeymapBuilderActivity.java`      | The guided keymap editor — rows, quick add, duplicate detection, search/filter, raw JSON import                                                                                               |
+| `LayoutsPreference.java`          | The Settings list combining Layout and Keymap rows, default layout selection, referential-integrity enforcement on rename/delete                                                               |
+| `TaskerAutomationConfig.java`     | Parses, validates, and re-serializes the single Tasker Automation JSON (triggers, timeout, task keywords, expand patterns), auto-filling missing defaults                                      |
+| `TaskerTriggerEngine.java`        | Watches typed characters for a configured trigger+keyword or expand pattern, runs the matching Tasker task, and applies its result (replace-field or replace-trigger), including one-shot undo |
+| `TaskerAutomationPreference.java` | The Settings row that opens the Tasker Automation JSON config editor and reloads`TaskerTriggerEngine` on save                                                                                |
 
 ---
 

@@ -155,7 +155,28 @@
     <item name="android:padding">8dp</item>
     <item name="android:scaleType">fitCenter</item>
   </style>
-  <style name="appTheme" parent="@android:style/Theme.Material.Light"/>
+  <!-- colorPrimary/colorPrimaryDark match settingsTheme's action bar color
+       (see colors.xml) so LauncherActivity and DictionariesActivity show
+       the same action bar color and title text color as SettingsActivity
+       and TaskerAutomationGuideActivity. -->
+  <style name="appTheme" parent="@android:style/Theme.Material.Light">
+    <item name="android:colorPrimary">@color/action_bar_color</item>
+    <item name="android:colorPrimaryDark">@color/action_bar_color_dark</item>
+    <item name="android:statusBarColor">@color/action_bar_color_dark</item>
+    <item name="android:actionBarStyle">@style/appActionBar</item>
+  </style>
+
+  <!-- Native ActionBar (used by appTheme) title text color override.
+       android:background is set explicitly because the parent style
+       (Widget.Material.Light.ActionBar) has its own fixed white
+       background that otherwise overrides colorPrimary. -->
+  <style name="appActionBar" parent="@android:style/Widget.Material.Light.ActionBar">
+    <item name="android:background">@color/action_bar_color</item>
+    <item name="android:titleTextStyle">@style/appActionBarTitleText</item>
+  </style>
+  <style name="appActionBarTitleText" parent="@android:style/TextAppearance.Material.Widget.ActionBar.Title">
+    <item name="android:textColor">@color/action_bar_title_color</item>
+  </style>
 
   <!-- SettingsActivity is the only screen using this theme (and the
        AndroidX/Material Preference library) - it's kept independent from

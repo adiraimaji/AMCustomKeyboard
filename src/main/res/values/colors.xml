@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Action bar color + title text color, shared by every activity's
+         action bar (appTheme's native ActionBar, and the MaterialToolbars
+         used by settingsTheme screens) so they all look identical.
+         appTheme forces light mode (Theme.Material.Light), so these are
+         fixed values with no values-night override. -->
+    <color name="action_bar_color">#0579C7</color>
+    <color name="action_bar_color_dark">#0579C7</color>
+    <color name="action_bar_title_color">#FDBD00</color>
+</resources>

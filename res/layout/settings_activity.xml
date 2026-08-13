@@ -11,8 +11,8 @@
       android:layout_width="match_parent"
       android:layout_height="?attr/actionBarSize"
       android:background="?attr/colorPrimary"
-      app:titleTextColor="@android:color/white"
-      app:navigationIconTint="@android:color/white"
+      app:titleTextColor="@color/action_bar_title_color"
+      app:navigationIconTint="@color/action_bar_title_color"
       android:elevation="4dp"/>
 
   <FrameLayout

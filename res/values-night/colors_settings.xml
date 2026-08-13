@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <color name="settings_primary">#7C93FF</color>
-  <color name="settings_primary_dark">#0B0C10</color>
-  <color name="settings_accent">#7C93FF</color>
+  <color name="settings_primary">#0579C7</color>
+  <color name="settings_primary_dark">#0579C7</color>
+  <color name="settings_accent">#0579C7</color>
   <color name="settings_secondary">#4FCDBE</color>
   <color name="settings_tertiary">#F0A857</color>
 
