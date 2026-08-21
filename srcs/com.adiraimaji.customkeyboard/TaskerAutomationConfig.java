@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /** Parsed, validated form of the single stored Tasker Automation JSON:
  {
@@ -15,7 +17,8 @@ import java.util.Map;
  "runtask1": "Task 1",     // any other key -> a Tasker task NAME
  "runtask2": "Task 2",
  "amck_patterns": [ // optional - see [ExpandPattern]
- { "prefix": "..", "suffix": " ", "task": "Expand Task 1" }
+ { "prefix": "..", "suffix": " ", "task": "Expand Task 1" },
+ { "prefix": "==", "regex": "\\d+.+\\d", "suffix": "\n", "task": "doMath" } // "regex" optional
  ]
  }
 
@@ -33,6 +36,25 @@ import java.util.Map;
  suffix span with the result - same field-editing behaviour as an
  "amck_append" trigger, never the whole field.
 
+ An entry may optionally add "regex": when present, the in-between
+ content only counts as a match if it matches [regex] *in full*
+ (i.e. as if the pattern were wrapped in ^...$ - a partial/"contains"
+ match is not enough). If the content doesn't fully match, this
+ entry is treated exactly like the suffix never having been typed at
+ all: no task runs, nothing is deleted from the field, and the user
+ can keep typing (the check simply runs again on the next
+ keystroke). This is what lets "==1+6 \n" ("regex": "\\d+.+\\d")
+ correctly NOT fire - the trailing space before the newline means
+ the content doesn't end in a digit - while "==1+6\n" does. Since
+ the match already excludes any newline inside the content (see
+ [TaskerTriggerEngine.check_expand_patterns]), an ordinary regex like
+ ".+" naturally also can't span one, without the pattern author
+ having to think about newlines at all. An entry with no "regex" (or
+ an empty one) keeps the original behaviour: any non-empty content
+ between [prefix] and [suffix] matches. An invalid regex is rejected
+ at [parse] time with a [KeymapJsonUtils.ParseError], same as any
+ other malformed field in this JSON.
+
  If "amck_replace", "amck_append", "amck_timeout" and/or
  "amck_patterns" are missing (or "amck_patterns" is an
  empty array) from the stored JSON, they are auto-filled with their
@@ -47,6 +69,8 @@ public final class TaskerAutomationConfig
     public static final String KEY_APPEND_TRIGGER = "amck_append";
     public static final String KEY_TIMEOUT_MS = "amck_timeout";
     public static final String KEY_EXPAND_PATTERNS = "amck_patterns";
+    /** Optional per-entry key inside "amck_patterns". See [ExpandPattern]. */
+    public static final String KEY_EXPAND_PATTERN_REGEX = "regex";
     public static final String DEFAULT_REPLACE_TRIGGER = "##";
     public static final String DEFAULT_APPEND_TRIGGER = "@@";
     public static final long DEFAULT_TIMEOUT_MS = 15000;
@@ -64,19 +88,29 @@ public final class TaskerAutomationConfig
     public static final String DEFAULT_EXPAND_PATTERN_SUFFIX = " ";
     public static final String DEFAULT_EXPAND_PATTERN_TASK = "ReplaceYourTaskName";
 
-    /** One "amck_patterns" entry. All 3 fields are required and
-     non-empty (see [TaskerAutomationConfig.parse]). */
+    /** One "amck_patterns" entry. [prefix], [suffix] and [task] are
+     required and non-empty (see [TaskerAutomationConfig.parse]).
+     [regex] is optional - null (or, equivalently, empty) means "any
+     non-empty content matches", same as before this field existed.
+     When non-null, [compiled_regex] is the pre-compiled form used to
+     test candidate content on every keystroke - compiled once here
+     rather than in the hot [TaskerTriggerEngine.check_expand_patterns]
+     path. */
     public static final class ExpandPattern
     {
         public final String prefix;
         public final String suffix;
         public final String task;
+        public final String regex;
+        public final Pattern compiled_regex;
 
-        public ExpandPattern(String prefix_, String suffix_, String task_)
+        public ExpandPattern(String prefix_, String suffix_, String task_, String regex_, Pattern compiled_regex_)
         {
             prefix = prefix_;
             suffix = suffix_;
             task = task_;
+            regex = regex_;
+            compiled_regex = compiled_regex_;
         }
     }
 
@@ -111,7 +145,8 @@ public final class TaskerAutomationConfig
     public static TaskerAutomationConfig parse(String json) throws KeymapJsonUtils.ParseError
     {
         KeymapJsonUtils.MixedObjectResult mixed =
-                KeymapJsonUtils.parse_object_with_array_field(json, KEY_EXPAND_PATTERNS);
+                KeymapJsonUtils.parse_object_with_array_field(json, KEY_EXPAND_PATTERNS,
+                        java.util.Collections.singleton(KEY_EXPAND_PATTERN_REGEX));
 
         String replace_trigger = DEFAULT_REPLACE_TRIGGER;
         String append_trigger = DEFAULT_APPEND_TRIGGER;
@@ -186,7 +221,7 @@ public final class TaskerAutomationConfig
         LinkedHashSet<String> seen_pattern_keys = new LinkedHashSet<>();
         for (List<Map.Entry<String, String>> obj : mixed.array_objects)
         {
-            String prefix = null, suffix = null, task = null;
+            String prefix = null, suffix = null, task = null, regex = null;
             for (Map.Entry<String, String> e : obj)
             {
                 String key = e.getKey();
@@ -196,10 +231,12 @@ public final class TaskerAutomationConfig
                     suffix = e.getValue();
                 else if (key.equals("task"))
                     task = e.getValue();
+                else if (key.equals(KEY_EXPAND_PATTERN_REGEX))
+                    regex = e.getValue();
                 else
                     throw new KeymapJsonUtils.ParseError(
                             "Unknown key \"" + key + "\" in \"" + KEY_EXPAND_PATTERNS
-                                    + "\" entry (expected \"prefix\", \"suffix\", \"task\")");
+                                    + "\" entry (expected \"prefix\", \"" + KEY_EXPAND_PATTERN_REGEX + "\" (optional), \"suffix\", \"task\")");
             }
             if (prefix == null || prefix.isEmpty())
                 throw new KeymapJsonUtils.ParseError("Each \"" + KEY_EXPAND_PATTERNS + "\" entry needs a non-empty \"prefix\"");
@@ -207,20 +244,37 @@ public final class TaskerAutomationConfig
                 throw new KeymapJsonUtils.ParseError("Each \"" + KEY_EXPAND_PATTERNS + "\" entry needs a non-empty \"suffix\"");
             if (task == null || task.isEmpty())
                 throw new KeymapJsonUtils.ParseError("Each \"" + KEY_EXPAND_PATTERNS + "\" entry needs a non-empty \"task\"");
+            if (regex != null && regex.isEmpty())
+                regex = null; // Empty "regex" is the same as omitting it entirely.
+
+            Pattern compiled_regex = null;
+            if (regex != null)
+            {
+                try
+                {
+                    compiled_regex = Pattern.compile(regex);
+                }
+                catch (PatternSyntaxException pse)
+                {
+                    throw new KeymapJsonUtils.ParseError(
+                            "Invalid \"" + KEY_EXPAND_PATTERN_REGEX + "\" for prefix \"" + prefix + "\" / suffix \"" + suffix
+                                    + "\": " + pse.getDescription());
+                }
+            }
 
             String pattern_key = prefix + "\u0000" + suffix;
             if (!seen_pattern_keys.add(pattern_key))
                 throw new KeymapJsonUtils.ParseError(
                         "Duplicate \"" + KEY_EXPAND_PATTERNS + "\" entry: prefix \"" + prefix + "\" with suffix \"" + suffix + "\"");
 
-            expand_patterns.add(new ExpandPattern(prefix, suffix, task));
+            expand_patterns.add(new ExpandPattern(prefix, suffix, task, regex, compiled_regex));
         }
 
         boolean used_default_expand_patterns = false;
         if (expand_patterns.isEmpty())
         {
             expand_patterns.add(new ExpandPattern(
-                    DEFAULT_EXPAND_PATTERN_PREFIX, DEFAULT_EXPAND_PATTERN_SUFFIX, DEFAULT_EXPAND_PATTERN_TASK));
+                    DEFAULT_EXPAND_PATTERN_PREFIX, DEFAULT_EXPAND_PATTERN_SUFFIX, DEFAULT_EXPAND_PATTERN_TASK, null, null));
             used_default_expand_patterns = true;
         }
 
@@ -254,6 +308,8 @@ public final class TaskerAutomationConfig
             ExpandPattern p = expand_patterns.get(i);
             sb.append("    {\n");
             sb.append("      \"prefix\": \"").append(escape_json(p.prefix)).append("\",\n");
+            if (p.regex != null)
+                sb.append("      \"").append(KEY_EXPAND_PATTERN_REGEX).append("\": \"").append(escape_json(p.regex)).append("\",\n");
             sb.append("      \"suffix\": \"").append(escape_json(p.suffix)).append("\",\n");
             sb.append("      \"task\": \"").append(escape_json(p.task)).append("\"\n");
             sb.append("    }").append(i < expand_patterns.size() - 1 ? ",\n" : "\n");

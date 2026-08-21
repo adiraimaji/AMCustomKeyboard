@@ -249,4 +249,55 @@
     <string name="tasker_error_timeout">Tasker task timed out or did not respond</string>
     <string name="tasker_error_task_failed">Tasker reported the task failed</string>
     <string name="tasker_error_generic">Could not reach Tasker. Is it installed and is \"Allow External Access\" enabled?</string>
+
+    <string name="pref_tasker_builder_title">Automation Builder</string>
+    <string name="pref_tasker_builder_summary">Edit the Tasker Automation config with a guided form instead of raw JSON</string>
+    <string name="tasker_builder_activity_title">Automation Builder</string>
+    <string name="tasker_builder_activity_subtitle">Build the Tasker Automation config without hand-writing JSON</string>
+    <string name="tasker_builder_section_global">Triggers</string>
+    <string name="tasker_builder_replace_trigger_label">amck_replace</string>
+    <string name="tasker_builder_replace_trigger_hint">e.g. ##</string>
+    <string name="tasker_builder_append_trigger_label">amck_append</string>
+    <string name="tasker_builder_append_trigger_hint">e.g. @@</string>
+    <string name="tasker_builder_timeout_label">amck_timeout (ms)</string>
+    <string name="tasker_builder_timeout_hint">e.g. 15000</string>
+    <string name="tasker_builder_section_tasks">Keywords → Tasker tasks</string>
+    <string name="tasker_builder_section_tasks_hint">Type &lt;amck_replace&gt;keyword or &lt;amck_append&gt;keyword to run the matching task</string>
+    <string name="tasker_builder_keyword_hint">keyword</string>
+    <string name="tasker_builder_task_name_hint">Tasker task name</string>
+    <string name="tasker_builder_add_task">+ Add keyword</string>
+    <string name="tasker_builder_section_patterns">Expand patterns (amck_patterns)</string>
+    <string name="tasker_builder_section_patterns_hint">Typing prefix + text + suffix runs a task and replaces that span with its result</string>
+    <string name="tasker_builder_pattern_prefix_label">Prefix</string>
+    <string name="tasker_builder_pattern_prefix_hint">e.g. ==</string>
+    <string name="tasker_builder_pattern_regex_label">Regex (optional)</string>
+    <string name="tasker_builder_pattern_regex_hint">e.g. \\d+.+\\d</string>
+    <string name="tasker_builder_pattern_suffix_label">Suffix</string>
+    <string name="tasker_builder_pattern_suffix_hint">e.g. \\n for newline</string>
+    <string name="tasker_builder_pattern_task_label">Task</string>
+    <string name="tasker_builder_pattern_task_hint">Tasker task name</string>
+    <string name="tasker_builder_add_pattern">+ Add expand pattern</string>
+    <string name="tasker_builder_remove_row">Remove row</string>
+    <string name="tasker_builder_save">Save</string>
+    <string name="tasker_builder_saved_toast">Automation config saved</string>
+
+    <string name="pref_category_about">About</string>
+    <string name="pref_check_update_title">Check for updates</string>
+    <string name="pref_check_update_summary_current">Current version: %1$s</string>
+    <string name="pref_check_update_checking">Checking for updates…</string>
+    <string name="pref_check_update_uptodate">You\'re on the latest version (%1$s)</string>
+    <string name="pref_check_update_error">Could not check for updates. Check your connection and try again</string>
+    <string name="update_dialog_title">Update available</string>
+    <string name="update_dialog_message">A new version of AMCustomKeyboard is available.</string>
+    <string name="update_dialog_version_line">%1$s → %2$s</string>
+    <string name="update_dialog_no_notes">No release notes provided.</string>
+    <string name="update_dialog_download_now">Download now</string>
+    <string name="update_dialog_later">Later</string>
+    <string name="update_download_notification_title">Downloading update…</string>
+    <string name="update_download_started_toast">Downloading update in the background…</string>
+    <string name="update_download_failed_toast">Download failed. Try again from Settings</string>
+    <string name="update_install_permission_title">Allow installing updates</string>
+    <string name="update_install_permission_message">To install the downloaded update, allow this app to install unknown apps in the next screen, then come back and tap \"Download now\" again.</string>
+    <string name="update_install_permission_open_settings">Open settings</string>
+    <string name="update_install_permission_cancel">Cancel</string>
 </resources>

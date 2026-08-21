@@ -64,6 +64,7 @@ Just download the `.apk`, allow installs from unknown sources, and enable it as 
 20. [Engine Architecture](#engine-architecture)
 21. [Full XML Example](#full-xml-example)
 22. [Quick-Reference Rules Summary](#quick-reference-rules-summary)
+23. [Checking for Updates](#checking-for-updates)
 
 ---
 
@@ -551,6 +552,7 @@ Word suggestions stay correctly in sync with keymap transliteration:
 
 AMCustomKeyboard can hand typed text off to [Tasker](https://tasker.joaoapps.com/) and insert the task's returned result directly into the field you're typing in — no scripting beyond a small JSON config. It's configured from **Settings → Tasker Automation**, which contains:
 
+- **Automation Builder** — a guided form for the same config (see [Automation Builder](#automation-builder) below) — fixed fields for the 3 `amck_` settings, and dynamically-growing rows for keywords and expand patterns. No JSON syntax to get right.
 - **Tasker Automation** — opens the JSON config editor (same line-numbered dialog used for keymaps and layouts), with inline validation and a live task count in its summary (e.g. "3 task(s) configured" / "Not configured").
 - **How to use Tasker Automation** — opens an in-app guide (`TaskerAutomationGuideActivity`) walking through triggers, expand patterns, the config format, and how to build the matching Tasker task.
 - **Get AM Tasker Plugins** — links to the companion [AMTaskerPluginsReleases](https://github.com/adiraimaji/AMTaskerPluginsReleases) repo, with Tasker plugins (send/return text, request IDs, and more) for building the Tasker side of a task.
@@ -569,7 +571,8 @@ There is a single, app-wide config (not a list, unlike layouts/keymaps):
   "runtask1": "Task 1",
   "runtask2": "Task 2",
   "amck_patterns": [
-    { "prefix": "..", "suffix": " ", "task": "Expand Task 1" }
+    { "prefix": "..", "suffix": " ", "task": "Expand Task 1" },
+    { "prefix": "==", "regex": "\d+.+\d", "suffix": "\n", "task": "doMath" }
   ]
 }
 ```
@@ -595,6 +598,17 @@ Given a task keyword `runtask1` mapped to Tasker task `"Task 1"`:
 
 Each entry in `amck_patterns` describes an open-ended expander, independent of the fixed keyword list above: typing `[prefix]`, then any non-empty text, then `[suffix]` (e.g. `..5+1 ` for prefix `".."` / suffix `" "`) runs `[task]` with that in-between text as `%keyword`, and replaces just that `prefix+content+suffix` span with the result — the same field-editing behavior as an `amck_append` trigger, never the whole field.
 
+An entry can optionally add `"regex"` to also constrain *what* the in-between content is allowed to look like. When present, the content must match `regex` **in full** (as if wrapped in `^...$`) — a match somewhere inside it isn't enough. If it doesn't fully match, this entry simply doesn't fire: nothing is deleted, no task runs, and the check just runs again on the next keystroke, so the user can keep typing until it does match (or gives up). For example:
+
+```json
+{ "prefix": "==", "regex": "\d+.+\d", "suffix": "\n", "task": "doMath" }
+```
+
+- `==59+3` + Enter → content is `59+3`, which fully matches `\d+.+\d` (digit(s), then anything, then a digit) → fires `doMath`.
+- `==1+6 ` + Enter → content is `1+6 ` (trailing space) → does **not** fully match `\d+.+\d` (doesn't end in a digit) → does not fire, `==1+6 ` (with the newline) stays in the field untouched.
+
+Content between `[prefix]` and `[suffix]` never contains a newline (a newline always ends the search for that entry), so an ordinary regex like `.+` naturally can't accidentally span multiple lines — you don't need to special-case newlines yourself. This also means a "match any single line of text" pattern like `{ "prefix": "^", "regex": ".+", "suffix": "(" }` works as expected: `^some text here(` fires, but a newline anywhere before the `(` prevents that particular `^` from being used as the start of the match. An entry with no `"regex"` (or an empty one) keeps the original behavior: any non-empty content matches. An invalid regex is rejected with an error when you save the config, the same as any other malformed field.
+
 ### One-shot undo
 
 Right after a trigger's replacement text lands, a single backspace with nothing typed in between swaps it back for the original trigger+keyword text (e.g. back to `@@runtask1`) instead of deleting a character. Pressing backspace again afterward behaves like an ordinary backspace. Typing anything else instead of that one immediate backspace forfeits the undo, and the result is left in place as plain text.
@@ -602,6 +616,18 @@ Right after a trigger's replacement text lands, a single backspace with nothing 
 ### Errors
 
 If a task times out, fails, or Tasker can't be reached at all (not installed, or "Allow External Access" disabled), the field is left as-is and a short error is shown rather than silently swallowing the failed command.
+
+### Automation Builder
+
+`TaskerAutomationBuilderActivity`, opened from **Settings → Tasker Automation → Automation Builder**, is a guided alternative to hand-writing the JSON above. It edits the exact same stored config (either screen's changes show up in the other) as a form instead of text:
+
+- A fixed card for `amck_replace`, `amck_append`, and `amck_timeout` — always exactly these 3 fields.
+- A dynamically-growing list of **keyword → Tasker task name** rows (the `"runtask1": "Task 1"` style entries used with the triggers above) — tap **+ Add keyword** for another row, or the ✕ on a row to remove it.
+- A dynamically-growing list of **`amck_patterns` cards**, each with its own `prefix` / `regex` (optional) / `suffix` / `task` fields stacked vertically (4 fields side by side wouldn't fit on a phone-width screen) — tap **+ Add expand pattern** for another card.
+
+Every field holds exactly what you type, with no trimming or escaping — a prefix/suffix that's just a space stays a space, and a literal `\n` (backslash + n) you type into a suffix field is saved as the same `\n` a directly-typed `"suffix": "\n"` in the raw JSON editor would be, not doubled into `\\n`. This works both ways: opening the builder on an existing config shows a saved `"\n"` suffix as the visible text `\n`, not an invisible newline, so what you see is always what you'd type to reproduce it.
+
+**Save** serializes the form back to the same JSON shape and validates it with the exact same rules as the raw JSON editor (non-empty prefix/suffix/task, no duplicate keyword, no duplicate prefix+suffix pattern, valid regex, timeout range, distinct replace/append triggers) — any problem is shown inline instead of being saved. A keyword row with only one of its two fields filled in is flagged the same way, before the JSON is even built. Opening the builder pre-fills every field from whatever's currently saved; if nothing is saved yet (or what's saved doesn't currently parse), it falls back to the same built-in defaults the raw JSON editor shows for a blank config.
 
 ---
 
@@ -698,6 +724,19 @@ Corresponding keymap (grouped output → keys, toggle-style):
 15. **Renaming a keymap updates every layout referencing it automatically.**
 16. **Deleting an in-use keymap requires confirmation**, and clears the attribute from every layout that used it.
 17. **The space bar always shows the active layout's name**, not a space glyph.
+
+---
+
+## Checking for Updates
+
+**Settings → About → Check for updates** checks [the GitHub releases page](../../releases/latest) for a newer version than the one currently installed, entirely in-app:
+
+- The row's summary always shows the currently installed version (`Current version: x.y.z`).
+- Tapping it checks the latest GitHub release. If it's newer, a dialog shows the release notes and a **Download now** button; if you're already up to date (or the check fails, e.g. no connection), a short message says so instead.
+- **Download now** downloads the release's APK with the system `DownloadManager` (visible as a normal download notification — nothing opens in a browser) and, once it finishes, launches the system package installer on it directly, all without leaving the app.
+- Installing a downloaded APK from outside the Play Store requires the **"install unknown apps"** permission for AMCustomKeyboard (Android 8+). If it isn't granted yet, tapping **Download now** shows a short explanation and a button straight to that settings screen instead of downloading a file you wouldn't yet be allowed to install.
+
+This requires the `android.permission.REQUEST_INSTALL_PACKAGES` permission (declared in the manifest) and network access; no account or API key is needed.
 
 ---
 

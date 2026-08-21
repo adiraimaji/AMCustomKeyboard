@@ -70,10 +70,14 @@
     <ListPreference android:key="clipboard_history_duration" android:icon="@drawable/ic_clipboard" android:title="@string/pref_clipboard_history_duration" android:summary="%s" android:defaultValue="5" android:entries="@array/pref_clipboard_duration_entries" android:entryValues="@array/pref_clipboard_duration_values"/>
   </PreferenceCategory>
   <PreferenceCategory android:title="@string/pref_category_tasker" android:icon="@drawable/ic_cat_tasker" android:layout="@layout/pref_category_header">
-    <com.adiraimaji.customkeyboard.prefs.TaskerAutomationPreference app:icon="@drawable/ic_tasker" android:title="@string/pref_tasker_automation_title" />
+    <com.adiraimaji.customkeyboard.prefs.TaskerAutomationBuilderLinkPreference app:icon="@drawable/ic_tasker" android:title="@string/pref_tasker_builder_title" android:summary="@string/pref_tasker_builder_summary"/>
+    <com.adiraimaji.customkeyboard.prefs.TaskerAutomationPreference android:key="tasker_automation" app:icon="@drawable/ic_tasker" android:title="@string/pref_tasker_automation_title" />
     <com.adiraimaji.customkeyboard.prefs.TaskerAutomationGuideLinkPreference android:title="@string/pref_tasker_guide_title" android:summary="@string/pref_tasker_guide_summary" android:icon="@drawable/ic_info"/>
     <Preference android:title="@string/pref_tasker_plugins_link_title"  android:summary="@string/pref_tasker_plugins_link_summary" android:icon="@drawable/ic_tasker_plugin">
       <intent android:action="android.intent.action.VIEW" android:data="https://github.com/adiraimaji/AMTaskerPluginsReleases/releases"/>
     </Preference>
+  </PreferenceCategory>
+  <PreferenceCategory android:title="@string/pref_category_about" android:icon="@drawable/ic_info" android:layout="@layout/pref_category_header">
+    <com.adiraimaji.customkeyboard.prefs.CheckUpdatePreference android:key="check_update" app:icon="@drawable/ic_download" android:title="@string/pref_check_update_title" />
   </PreferenceCategory>
 </PreferenceScreen>

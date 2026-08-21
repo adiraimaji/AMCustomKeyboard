@@ -29,7 +29,7 @@ public class TaskerAutomationPreference extends Preference
         refresh_summary();
     }
 
-    private void refresh_summary()
+    public void refresh_summary()
     {
         String json = TaskerAutomationManager.load(getContext());
         int count = 0;
@@ -86,7 +86,8 @@ public class TaskerAutomationPreference extends Preference
         KeymapJsonUtils.MixedObjectResult mixed;
         try
         {
-            mixed = KeymapJsonUtils.parse_object_with_array_field(stored, TaskerAutomationConfig.KEY_EXPAND_PATTERNS);
+            mixed = KeymapJsonUtils.parse_object_with_array_field(stored, TaskerAutomationConfig.KEY_EXPAND_PATTERNS,
+                    java.util.Collections.singleton(TaskerAutomationConfig.KEY_EXPAND_PATTERN_REGEX));
         }
         catch (Exception e)
         {

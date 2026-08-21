@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light-blue "island" background for a dynamically-added row/card,
+     matching the .example-block style used for the Config/You type/
+     Output blocks in assets/tasker_automation_guide.html (background
+     #d7e9f5, border in the app's brand blue) rather than a plain white
+     card - keeps this screen visually tied to the guide, and gives
+     each row much more contrast against @color/settings_background
+     than white-on-white ever could. Used by
+     activity_tasker_automation_builder.xml directly for the static
+     card, and built the same way in TaskerAutomationBuilderActivity.
+     java for each dynamically-added row/card, since those need a
+     per-instance corner radius object (GradientDrawable) rather than
+     a shared static drawable. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#D7E9F5" />
+    <corners android:radius="10dp" />
+    <stroke android:width="1dp" android:color="@color/settings_primary" />
+</shape>

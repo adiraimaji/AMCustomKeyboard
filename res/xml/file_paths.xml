@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Covers getExternalFilesDir(...) in full (UpdateInstaller saves the
+     downloaded APK under its Download/ subdirectory) so a content://
+     Uri for it can be granted to the system package installer. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-files-path name="external_files" path="." />
+</paths>

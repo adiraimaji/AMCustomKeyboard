@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/tab_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:background="@color/settings_background"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/tab_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:title="@string/tasker_builder_activity_title"
+        app:titleTextColor="@color/action_bar_title_color"
+        app:navigationIconTint="@color/action_bar_title_color"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        android:elevation="4dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="2dp"
+        android:text="@string/tasker_builder_activity_subtitle"
+        android:textColor="@color/settings_on_surface_variant"
+        android:textSize="12sp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:paddingStart="16dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- amck_replace / amck_append / amck_timeout: 3 fixed rows,
+                 always present, never added/removed. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/tasker_builder_section_global"
+                android:textColor="@color/settings_on_surface_variant"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/tab_global_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_settings_card"
+                android:elevation="1dp"
+                android:orientation="vertical"
+                android:padding="12dp" />
+
+            <!-- Dynamic keyword -> Tasker task name rows, used with
+                 amck_replace / amck_append triggers. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/tasker_builder_section_tasks"
+                android:textColor="@color/settings_on_surface_variant"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tasker_builder_section_tasks_hint"
+                android:textColor="@color/settings_on_surface_variant"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:id="@+id/tab_tasks_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical" />
+
+            <Button
+                android:id="@+id/tab_add_task_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:minHeight="40dp"
+                android:text="@string/tasker_builder_add_task"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
+
+            <!-- Dynamic amck_patterns entries: each one gets its own
+                 card with 4 stacked fields (prefix / optional regex /
+                 suffix / task), since fitting 4 inputs side by side
+                 would be unreadable on a phone-width screen. -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/tasker_builder_section_patterns"
+                android:textColor="@color/settings_on_surface_variant"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tasker_builder_section_patterns_hint"
+                android:textColor="@color/settings_on_surface_variant"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:id="@+id/tab_patterns_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical" />
+
+            <Button
+                android:id="@+id/tab_add_pattern_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp"
+                android:minHeight="40dp"
+                android:text="@string/tasker_builder_add_pattern"
+                android:textAllCaps="false"
+                android:textSize="13sp" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <TextView
+        android:id="@+id/tab_error_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:textColor="#C0392B"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/tab_save_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        android:minHeight="46dp"
+        android:text="@string/tasker_builder_save"
+        android:textAllCaps="false"
+        android:textSize="14sp" />
+
+</LinearLayout>

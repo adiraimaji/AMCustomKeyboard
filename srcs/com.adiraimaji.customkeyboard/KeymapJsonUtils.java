@@ -2,9 +2,11 @@ package com.adiraimaji.customkeyboard;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Hand-rolled parser for flat {"key":"value", ...} JSON objects that
  PRESERVES duplicate keys as separate entries in encounter order,
@@ -75,15 +77,33 @@ public final class KeymapJsonUtils
     public static List<Map.Entry<String, String>> parse_flat_object(String json) throws ParseError
     {
         int[] pos = new int[]{ 0 };
-        return parse_flat_object_body(json, pos, json.length());
+        return parse_flat_object_body(json, pos, json.length(), Collections.<String>emptySet());
     }
 
     /** Parses a top-level {"key":"value", ...} object, same as
      [parse_flat_object], except that [array_field_key]'s value must be
      a JSON array of flat objects rather than a string - every other
      key must still have a plain string value, same as
-     [parse_flat_object]. */
+     [parse_flat_object]. Equivalent to calling the 3-arg overload
+     with an empty [lenient_value_keys]. */
     public static MixedObjectResult parse_object_with_array_field(String json, String array_field_key) throws ParseError
+    {
+        return parse_object_with_array_field(json, array_field_key, Collections.<String>emptySet());
+    }
+
+    /** Same as the 2-arg overload, except that inside each object in
+     the [array_field_key] array, a value whose key is in
+     [lenient_value_keys] is parsed with [parse_json_string]'s lenient
+     mode - see its doc. Used for "regex" inside "amck_patterns"
+     entries, so a regex like "\d+.+\d" can be typed as-is without
+     JSON-escaping every backslash to "\\d+.+\\d" first. Every other
+     value (including [array_field_key] entries not in
+     [lenient_value_keys], and every top-level "key":"value" pair
+     outside the array) keeps strict JSON escaping - unrecognized
+     escapes there still fail loudly, which is what you want for
+     plain text fields where a stray backslash is far more likely to
+     be a typo than an intentional regex. */
+    public static MixedObjectResult parse_object_with_array_field(String json, String array_field_key, Set<String> lenient_value_keys) throws ParseError
     {
         List<Map.Entry<String, String>> string_entries = new ArrayList<>();
         List<List<Map.Entry<String, String>>> array_objects = new ArrayList<>();
@@ -104,7 +124,7 @@ public final class KeymapJsonUtils
             if (i >= len || json.charAt(i) != '"')
                 throw new ParseError("Expected a key string near position " + i);
             int[] pos = new int[]{ i };
-            String key = parse_json_string(json, pos, len);
+            String key = parse_json_string(json, pos, len, false);
             i = skip_ws(json, pos[0], len);
             if (i >= len || json.charAt(i) != ':')
                 throw new ParseError("Expected ':' after key \"" + key + "\"");
@@ -130,7 +150,7 @@ public final class KeymapJsonUtils
                         if (i >= len || json.charAt(i) != '{')
                             throw new ParseError("Expected an object inside \"" + key + "\" near position " + i);
                         int[] op = new int[]{ i };
-                        List<Map.Entry<String, String>> obj = parse_flat_object_body(json, op, len);
+                        List<Map.Entry<String, String>> obj = parse_flat_object_body(json, op, len, lenient_value_keys);
                         array_objects.add(obj);
                         i = skip_ws(json, op[0], len);
                         if (i < len && json.charAt(i) == ',')
@@ -155,7 +175,7 @@ public final class KeymapJsonUtils
                 if (i >= len || json.charAt(i) != '"')
                     throw new ParseError("Expected a string value for key \"" + key + "\"");
                 pos[0] = i;
-                String value = parse_json_string(json, pos, len);
+                String value = parse_json_string(json, pos, len, false);
                 i = pos[0];
                 string_entries.add(new AbstractMap.SimpleEntry<>(key, value));
             }
@@ -181,9 +201,13 @@ public final class KeymapJsonUtils
     /** Parses a single flat {"key":"value", ...} object starting at
      [pos[0]] (which must point at the opening '{'), advancing
      [pos[0]] to just past the matching closing '}'. Shared by
-     [parse_flat_object] (the whole document is one such object) and
-     [parse_object_with_array_field] (each array element is one). */
-    private static List<Map.Entry<String, String>> parse_flat_object_body(String json, int[] pos, int len) throws ParseError
+     [parse_flat_object] (the whole document is one such object,
+     always with an empty [lenient_value_keys]) and
+     [parse_object_with_array_field] (each array element is one, with
+     whatever [lenient_value_keys] that caller was given). See
+     [parse_json_string] for what "lenient" means for a given key's
+     value. */
+    private static List<Map.Entry<String, String>> parse_flat_object_body(String json, int[] pos, int len, Set<String> lenient_value_keys) throws ParseError
     {
         List<Map.Entry<String, String>> result = new ArrayList<>();
         int i = skip_ws(json, pos[0], len);
@@ -203,7 +227,7 @@ public final class KeymapJsonUtils
             if (i >= len || json.charAt(i) != '"')
                 throw new ParseError("Expected a key string near position " + i);
             int[] kp = new int[]{ i };
-            String key = parse_json_string(json, kp, len);
+            String key = parse_json_string(json, kp, len, false);
             i = skip_ws(json, kp[0], len);
             if (i >= len || json.charAt(i) != ':')
                 throw new ParseError("Expected ':' after key \"" + key + "\"");
@@ -212,7 +236,7 @@ public final class KeymapJsonUtils
             if (i >= len || json.charAt(i) != '"')
                 throw new ParseError("Expected a string value for key \"" + key + "\"");
             kp[0] = i;
-            String value = parse_json_string(json, kp, len);
+            String value = parse_json_string(json, kp, len, lenient_value_keys.contains(key));
             i = kp[0];
             result.add(new AbstractMap.SimpleEntry<>(key, value));
             i = skip_ws(json, i, len);
@@ -323,7 +347,38 @@ public final class KeymapJsonUtils
         return i;
     }
 
-    private static String parse_json_string(String s, int[] pos, int len) throws ParseError
+    /** Parses a double-quoted JSON string starting at [pos[0]]
+     (pointing at the opening '"'), advancing [pos[0]] to just past
+     the closing '"'. Standard JSON escapes (\", \\, \/, \n, \r, \t,
+     \f, \\uXXXX) are always decoded to their real character, in both
+     modes - required for \" (so an escaped quote doesn't end the
+     string early) and harmless for the rest, since e.g. a decoded
+     real newline character matches identically to a regex \n
+     meta-escape would.
+
+     [lenient] controls what happens with everything else:
+       - false (used for every value in this file EXCEPT "regex"
+         inside "amck_patterns"): any other \X is a hard error - a
+         stray backslash is far more likely to be a typo in a keymap
+         value, task name, prefix, or suffix than something
+         intentional, so this fails loudly rather than silently
+         keeping mismatched text.
+       - true (used only for "regex" values - see
+         [parse_object_with_array_field]): any other \X (\d, \w, \s,
+         \+, \., \(, digits, etc.) is kept exactly as typed - literal
+         backslash followed by that character - rather than
+         rejected, so a regex like "\d+.+\d" can be typed directly
+         without first JSON-escaping every backslash to "\\d+.+\\d".
+         \b is ALSO kept literal in this mode rather than decoded to
+         an actual backspace character (0x08): JSON's \b (backspace)
+         and a regex engine's \b (zero-width word-boundary assertion)
+         mean fundamentally different things - a backspace character
+         can never encode a zero-width assertion - so lenient mode
+         must never silently turn a typed "\b" word-boundary into a
+         literal backspace byte. \f is left decoded either way since
+         Java regex's own \f also just means "match a form-feed
+         character" - same outcome, no similar conflict. */
+    private static String parse_json_string(String s, int[] pos, int len, boolean lenient) throws ParseError
     {
         int i = pos[0];
         if (s.charAt(i) != '"')
@@ -354,8 +409,12 @@ public final class KeymapJsonUtils
                     case 'n': b.append('\n'); i++; break;
                     case 'r': b.append('\r'); i++; break;
                     case 't': b.append('\t'); i++; break;
-                    case 'b': b.append('\b'); i++; break;
                     case 'f': b.append('\f'); i++; break;
+                    case 'b':
+                        // See the "\b" note in this method's doc.
+                        if (lenient) { b.append('\\').append('b'); i++; }
+                        else { b.append('\b'); i++; }
+                        break;
                     case 'u':
                         if (i + 4 >= len)
                             throw new ParseError("Invalid unicode escape");
@@ -365,7 +424,9 @@ public final class KeymapJsonUtils
                         i += 5;
                         break;
                     default:
-                        throw new ParseError("Invalid escape sequence \\" + esc);
+                        if (lenient) { b.append('\\').append(esc); i++; }
+                        else throw new ParseError("Invalid escape sequence \\" + esc);
+                        break;
                 }
             }
             else

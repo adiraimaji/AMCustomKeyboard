@@ -160,6 +160,9 @@ public class SettingsActivity extends AppCompatActivity
       Preference p = findPreference("layouts");
       if (p instanceof LayoutsPreference)
         ((LayoutsPreference)p).reload_from_preferences_and_sync();
+      Preference tasker_pref = findPreference("tasker_automation");
+      if (tasker_pref instanceof com.adiraimaji.customkeyboard.prefs.TaskerAutomationPreference)
+        ((com.adiraimaji.customkeyboard.prefs.TaskerAutomationPreference)tasker_pref).refresh_summary();
     }
 
     @Override

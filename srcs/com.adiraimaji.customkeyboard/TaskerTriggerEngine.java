@@ -57,8 +57,9 @@ import java.util.HashSet;
  committed character (forward-typed or backspace) and simply looks at
  the field's actual current text: does it now end with some
  configured suffix, and if so, is there a matching prefix somewhere
- before that (with at least one character of content in between)?
- This needs no dedicated state at all - it's the same
+ before that (with at least one character of content in between - and,
+ if that entry configures an optional "regex", does the content match
+ it in full)? This needs no dedicated state at all - it's the same
  read-the-actual-field-text philosophy [handle_backspace] already
  uses for typo-correction, just applied per-keystroke rather than
  only on backspace. Firing one always behaves like an "amck_append"
@@ -714,6 +715,16 @@ public class TaskerTriggerEngine
                 continue; // Require non-empty content - otherwise ordinary
             // punctuation like ".. " (an ellipsis before a
             // space) would misfire as an empty-content match.
+            // Optional "regex" constraint (see [TaskerAutomationConfig
+            // .ExpandPattern]): the content must match it *in full*,
+            // not just somewhere inside it. A partial match doesn't
+            // count as a fire - this is treated exactly like the
+            // suffix not having completed anything at all: nothing
+            // runs, nothing is deleted, and the very next keystroke
+            // simply re-runs this same check against whatever the
+            // field looks like then.
+            if (p.compiled_regex != null && !p.compiled_regex.matcher(content).matches())
+                continue;
             String matched_span = text_before.substring(prefix_idx);
             fire_expand(ctx, conn, wt, late_conn_provider, matched_span, content, p.task);
             return; // Only one pattern fires per keystroke.

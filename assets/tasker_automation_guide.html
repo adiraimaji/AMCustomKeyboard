@@ -150,6 +150,7 @@
     <a href="#idea">The idea</a>
     <a href="#setup">One-time setup</a>
     <a href="#config">Config file</a>
+    <a href="#builder">Automation Builder</a>
     <a href="#replace">Replace trigger</a>
     <a href="#append">Append trigger</a>
     <a href="#expand">Expand patterns</a>
@@ -219,7 +220,7 @@
     <div class="field-block">
         <span class="field-name">amck_patterns</span><span class="field-meta">Array</span>
         <div><span class="example-chip">{ "prefix": "..", "suffix": " ", "task": "Calculator" }</span></div>
-        <div class="desc">List of open-ended <i>prefix ... suffix</i> expanders - see the Expand patterns section below.</div>
+        <div class="desc">List of open-ended <i>prefix ... suffix</i> expanders, optionally with a <code>regex</code> too - see the Expand patterns section below.</div>
         <div class="default-chip">Default: one example entry</div>
     </div>
     <div class="field-block">
@@ -228,6 +229,18 @@
         <div class="desc">A keyword you'll type after the trigger, mapped to a Tasker task <b>name</b>.</div>
     </div>
     <div class="desc" style="margin-top:6px;">Any of the <code>amck_</code> keys can simply be left out - the editor auto-fills the defaults for you and shows them the next time you open it, so you always see (and can override) every setting in one place. <code>amck_replace</code> and <code>amck_append</code> must be different from each other, and you need at least one task keyword configured.</div>
+</div>
+
+<div id="builder" class="card">
+    <div class="section-title">Automation Builder (no JSON required)</div>
+    <div class="desc">Don't want to hand-write JSON at all? <code>Settings &#8594; Tasker Automation &#8594; Automation Builder</code> opens a guided form editing this exact same config - the two screens always agree, and you can switch between them freely.</div>
+    <ul class="usecases" style="margin-top:10px;">
+        <li>A fixed section for <code>amck_replace</code> / <code>amck_append</code> / <code>amck_timeout</code> - always exactly those 3 fields.</li>
+        <li>An add/remove list of <b>keyword &#8594; Tasker task name</b> rows, for the replace/append triggers.</li>
+        <li>An add/remove list of <b>expand pattern</b> cards, one per <code>amck_patterns</code> entry, with <code>prefix</code> / <code>regex</code> (optional) / <code>suffix</code> / <code>task</code> stacked so each stays readable on a phone-width screen.</li>
+    </ul>
+    <div class="desc">Every field holds exactly what you type - nothing is trimmed or re-escaped. A prefix or suffix that's just a single space stays a space, and typing <code>\n</code> (backslash, then n) into a suffix field saves the same way <code>"suffix": "\n"</code> would if you'd typed it directly into the JSON editor - it isn't doubled into <code>\\n</code>. Opening the builder on an existing config shows this the same way back: a saved <code>\n</code> suffix displays as the visible text <code>\n</code>, not an actual line break.</div>
+    <div class="desc">Saving runs through the exact same checks as the JSON editor (non-empty prefix/suffix/task, no duplicate keyword, no duplicate prefix+suffix pair, valid regex, timeout range, distinct replace/append triggers) - anything invalid is flagged inline instead of being saved.</div>
 </div>
 
 <div id="replace" class="card">
@@ -283,6 +296,13 @@
         <div class="example-row"><div class="example-value">Total: 42</div></div>
     </div>
     <div class="desc">Here <code>%keyword</code> received by the task is <code>12*3.5</code> - the task just needs a "Variable Set" action doing the arithmetic and sending it back. You can define as many expand patterns as you like, each with its own prefix/suffix/task, as long as no two entries share the exact same prefix+suffix pair.</div>
+    <div class="field-block" style="margin-top:12px;">
+        <span class="field-name">regex</span><span class="field-meta">Text, optional</span>
+        <div><span class="example-chip">{ "prefix": "==", "regex": "\d+.+\d", "suffix": "\n", "task": "doMath" }</span></div>
+        <div class="desc">Restricts a pattern so it only fires when the content between <code>prefix</code> and <code>suffix</code> matches this regex <b>in full</b> (like wrapping it in <code>^...$</code>) - a partial match doesn't count. If it doesn't fully match, nothing happens: no task runs and nothing is deleted, so you can just keep typing until it does. In the example, <code>==59+3</code> fires (the content is all digits/operators start to end), but <code>==1+6 </code> with a trailing space before the newline does not, since it no longer ends in a digit.</div>
+        <div class="desc">The content a pattern ever sees can't contain a newline regardless of the regex, so <code>.</code> in a regex here already can't accidentally span multiple lines. When editing the raw JSON directly (not through the Automation Builder above), backslashes in <code>regex</code> specifically don't need doubling - type <code>\d</code> as-is rather than <code>\\d</code>.</div>
+        <div class="default-chip">Default: none (any non-empty content matches)</div>
+    </div>
     <ul class="usecases" style="margin-top:10px;">
         <li>Unit conversions, e.g. ~10km</li>
         <li>Quick inline maths</li>
