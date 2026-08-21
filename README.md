@@ -33,7 +33,7 @@ Just download the `.apk`, allow installs from unknown sources, and enable it as 
 <tr>
 <td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_7.jpeg" width="220"/></td>
 <td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_8.jpeg" width="220"/></td>
-<td></td>
+<td><img src="https://raw.githubusercontent.com/adiraimaji/AMCustomKeyboard/main/Screenshots/Screenshot_9.jpeg" width="220"/></td>
 </tr>
 </table>
 </div>
