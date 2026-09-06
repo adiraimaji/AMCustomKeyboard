@@ -44,23 +44,22 @@ public class TaskerAutomationPreference extends Preference
     }
 
     /** Text shown when the dialog opens: the stored JSON with any of
-     the 3 "amck_" keys that are missing filled in with their default
-     value (so the user always sees, and can directly edit, all 3 -
-     rather than having to know the defaults exist and type the key
-     name themselves to override one), and with "amck_patterns"
-     itself auto-filled with one default entry (prefix "..", suffix
-     " ", task [TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_TASK])
-     when that key is missing entirely - same reasoning: the user
-     should see it and edit the task name in place rather than have
-     to know the feature exists and type the whole key/array by hand.
-     If the key IS present (even as an empty array - that's treated
-     as an intentional "no expand patterns configured" and left
-     alone), it's kept exactly as saved. If nothing is stored yet, all
-     3 plus one placeholder task and one example expand pattern are
-     shown. If the stored JSON is currently invalid, it's returned
-     as-is (unmodified) so [validate] can show the real parse error
-     rather than this method silently rewriting text the user hasn't
-     fixed yet. */
+     the "amck_" scalar keys that are missing filled in with their
+     default value (so the user always sees, and can directly edit,
+     all of them - rather than having to know the defaults exist and
+     type the key name themselves to override one), and with
+     "amck_patterns" itself auto-filled with two example entries (one
+     "fire_on_suffix": "true", one "false") when that key is missing
+     entirely - same reasoning: the user should see both styles and
+     edit the task names in place rather than have to know the feature
+     exists and type the whole key/array by hand. If the key IS
+     present (even as an empty array - that's treated as an
+     intentional "no patterns configured" and left alone), it's kept
+     exactly as saved. If nothing is stored yet, everything plus one
+     placeholder task and both example patterns are shown. If the
+     stored JSON is currently invalid, it's returned as-is (unmodified)
+     so [validate] can show the real parse error rather than this
+     method silently rewriting text the user hasn't fixed yet. */
     private String initial_json()
     {
         String stored = TaskerAutomationManager.load(getContext());
@@ -73,9 +72,19 @@ public class TaskerAutomationPreference extends Preference
                 "  \"runtask1\": \"Task 1\",\n" +
                 "  \"amck_patterns\": [\n" +
                 "    {\n" +
-                "      \"prefix\": \"..\",\n" +
-                "      \"suffix\": \" \",\n" +
+                "      \"prefix\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX + "\",\n" +
+                "      \"suffix\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX + "\",\n" +
+                "      \"replace_prefix\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX + "\",\n" +
+                "      \"fire_on_suffix\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_FIRE_ON_SUFFIX + "\",\n" +
                 "      \"task\": \"Expand Task 1\"\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"prefix\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_PREFIX + "\",\n" +
+                "      \"regex\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REGEX + "\",\n" +
+                "      \"suffix\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_SUFFIX + "\",\n" +
+                "      \"replace_prefix\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REPLACE_PREFIX + "\",\n" +
+                "      \"fire_on_suffix\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_FIRE_ON_SUFFIX + "\",\n" +
+                "      \"task\": \"TextExpander\"\n" +
                 "    }\n" +
                 "  ]\n" +
                 "}";
@@ -83,11 +92,16 @@ public class TaskerAutomationPreference extends Preference
 
     private static String ensure_amck_defaults(String stored)
     {
-        KeymapJsonUtils.MixedObjectResult mixed;
+        java.util.Set<String> array_field_keys = java.util.Collections.singleton(TaskerAutomationConfig.KEY_EXPAND_PATTERNS);
+        java.util.Set<String> lenient_value_keys = new java.util.HashSet<>();
+        lenient_value_keys.add(TaskerAutomationConfig.KEY_EXPAND_PATTERN_REGEX);
+        lenient_value_keys.add("prefix");
+        lenient_value_keys.add("suffix");
+
+        KeymapJsonUtils.MultiArrayObjectResult mixed;
         try
         {
-            mixed = KeymapJsonUtils.parse_object_with_array_field(stored, TaskerAutomationConfig.KEY_EXPAND_PATTERNS,
-                    java.util.Collections.singleton(TaskerAutomationConfig.KEY_EXPAND_PATTERN_REGEX));
+            mixed = KeymapJsonUtils.parse_object_with_array_fields(stored, array_field_keys, lenient_value_keys);
         }
         catch (Exception e)
         {
@@ -106,22 +120,34 @@ public class TaskerAutomationPreference extends Preference
         }
 
         // Only an entirely-missing key gets a default injected - an
-        // explicit empty array ("amck_patterns": []) is treated
-        // as the user intentionally clearing it, and left as-is.
-        boolean needs_default_expand_patterns = !mixed.array_field_present;
+        // explicit empty array ("amck_patterns": []) is treated as the
+        // user intentionally clearing it, and left as-is.
+        boolean needs_default_expand_patterns = !mixed.array_fields_present.contains(TaskerAutomationConfig.KEY_EXPAND_PATTERNS);
 
         if (has_replace && has_append && has_timeout && !needs_default_expand_patterns)
             return stored; // Nothing missing - keep exactly as saved.
 
-        List<List<Map.Entry<String, String>>> array_objects = mixed.array_objects;
+        List<List<Map.Entry<String, String>>> pattern_objects = mixed.array_objects(TaskerAutomationConfig.KEY_EXPAND_PATTERNS);
         if (needs_default_expand_patterns)
         {
-            List<Map.Entry<String, String>> default_entry = new ArrayList<>();
-            default_entry.add(new AbstractMap.SimpleEntry<>("prefix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX));
-            default_entry.add(new AbstractMap.SimpleEntry<>("suffix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX));
-            default_entry.add(new AbstractMap.SimpleEntry<>("task", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_TASK));
-            array_objects = new ArrayList<>();
-            array_objects.add(default_entry);
+            List<Map.Entry<String, String>> classic_entry = new ArrayList<>();
+            classic_entry.add(new AbstractMap.SimpleEntry<>("prefix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX));
+            classic_entry.add(new AbstractMap.SimpleEntry<>("suffix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX));
+            classic_entry.add(new AbstractMap.SimpleEntry<>("replace_prefix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX));
+            classic_entry.add(new AbstractMap.SimpleEntry<>("fire_on_suffix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_FIRE_ON_SUFFIX));
+            classic_entry.add(new AbstractMap.SimpleEntry<>("task", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_TASK));
+
+            List<Map.Entry<String, String>> live_entry = new ArrayList<>();
+            live_entry.add(new AbstractMap.SimpleEntry<>("prefix", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_PREFIX));
+            live_entry.add(new AbstractMap.SimpleEntry<>(TaskerAutomationConfig.KEY_EXPAND_PATTERN_REGEX, TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REGEX));
+            live_entry.add(new AbstractMap.SimpleEntry<>("suffix", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_SUFFIX));
+            live_entry.add(new AbstractMap.SimpleEntry<>("replace_prefix", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REPLACE_PREFIX));
+            live_entry.add(new AbstractMap.SimpleEntry<>("fire_on_suffix", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_FIRE_ON_SUFFIX));
+            live_entry.add(new AbstractMap.SimpleEntry<>("task", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_TASK));
+
+            pattern_objects = new ArrayList<>();
+            pattern_objects.add(classic_entry);
+            pattern_objects.add(live_entry);
         }
 
         List<String> lines = new ArrayList<>();
@@ -133,8 +159,7 @@ public class TaskerAutomationPreference extends Preference
             lines.add(json_line(TaskerAutomationConfig.KEY_TIMEOUT_MS, String.valueOf(TaskerAutomationConfig.DEFAULT_TIMEOUT_MS)));
         for (Map.Entry<String, String> e : mixed.string_entries)
             lines.add(json_line(e.getKey(), e.getValue()));
-        if (mixed.array_field_present || needs_default_expand_patterns)
-            lines.add(json_array_block(TaskerAutomationConfig.KEY_EXPAND_PATTERNS, array_objects));
+        lines.add(json_array_block(TaskerAutomationConfig.KEY_EXPAND_PATTERNS, pattern_objects));
 
         StringBuilder b = new StringBuilder("{\n");
         for (int i = 0; i < lines.size(); i++)
@@ -153,17 +178,17 @@ public class TaskerAutomationPreference extends Preference
         return "\"" + escape_json_string(key) + "\": \"" + escape_json_string(value) + "\"";
     }
 
-    /** Re-serializes an "amck_patterns"-shaped array field (list
-     of flat {"prefix":..,"suffix":..,"task":..} objects) exactly as
+    /** Re-serializes an "amck_patterns"-shaped array field (a list of
+     flat objects, whatever keys each entry has) exactly as
      [ensure_amck_defaults] needs to preserve it when it has to
      reconstruct the surrounding JSON to inject missing "amck_"
-     defaults elsewhere in the object - or, when
-     [ensure_amck_defaults] built a fresh single-entry default list
-     because the key was missing entirely, to render that same way.
-     The multi-line result is meant to be placed, as-is, as one entry
-     in the same [lines] list [ensure_amck_defaults] builds for the
-     plain scalar keys - its first line lines up with those at the
-     "  " (2-space) indent the caller already adds uniformly. */
+     defaults elsewhere in the object - or, when [ensure_amck_defaults]
+     built a fresh default list because the key was missing entirely,
+     to render that same way. The multi-line result is meant to be
+     placed, as-is, as one entry in the same [lines] list
+     [ensure_amck_defaults] builds for the plain scalar keys - its
+     first line lines up with those at the "  " (2-space) indent the
+     caller already adds uniformly. */
     private static String json_array_block(String key, List<List<Map.Entry<String, String>>> array_objects)
     {
         StringBuilder b = new StringBuilder();

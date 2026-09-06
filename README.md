@@ -87,7 +87,7 @@ On top of the transliteration engine itself, AMCustomKeyboard ships:
 - **Grouped-only keymap JSON** (output → keys)
 - **Toggle-style keymaps** for reversible mappings (e.g. `a ↔ அ`, `su ↔ சு`)
 - A **Default layout** setting to choose which layout loads when the keyboard opens
-- **Tasker Automation** — typed triggers that hand text off to a Tasker task and insert its result back into the field, with no XML/scripting beyond a small JSON config
+- **Tasker Automation** — typed triggers and regex-based expand patterns that hand text off to a Tasker task and insert its result back into the field, with no XML/scripting beyond a small JSON config
 
 ---
 
@@ -282,12 +282,12 @@ And this keymap:
 The resulting behavior (with `swipekeymap` **not** set) is:
 
 | Action             | XML Attribute Used | Keymap Applied? | Final Output |
-| ------------------ | ------------------ | :-------------: | :----------: |
-| Tap                | `c="a"`          |     ✅ Yes     |    `α`    |
-| Shift + Tap        | `C="A"`          |     ✅ Yes     |    `Α`    |
-| Swipe East         | `e="b"`          |      ❌ No      |    `b`    |
-| Shift + Swipe East | `E="B"`          |      ❌ No      |    `B`    |
-| Swipe North-East   | `ne="1"`         |      ❌ No      |    `1`    |
+| ------------------ | ------------------- | :--------------: | :-----------: |
+| Tap                | `c="a"`             |     ✅ Yes       |    `α`        |
+| Shift + Tap        | `C="A"`             |     ✅ Yes       |    `Α`        |
+| Swipe East         | `e="b"`             |      ❌ No       |    `b`        |
+| Shift + Swipe East | `E="B"`             |      ❌ No       |    `B`        |
+| Swipe North-East   | `ne="1"`            |      ❌ No       |    `1`        |
 
 > **Important:** By default, swipe keys always send the exact value defined in the layout, unconditionally bypassing the keymap engine. This is intentional, so gesture shortcuts and symbol swipes stay predictable even on a transliterating layout — unless you explicitly opt in with `swipekeymap="true"`.
 
@@ -302,10 +302,10 @@ By default, only center-tap output (`c` / `C`) is transliterated — swipe outpu
 ```
 
 | `keymap` attribute | `swipekeymap` attribute | Behavior                                                                |
-| -------------------- | ------------------------- | ----------------------------------------------------------------------- |
-| Absent               | *(any)*                 | No transliteration at all —`swipekeymap` has no effect.              |
-| Present              | Absent or`"false"`      | Only center taps (`c` / `C`) are transliterated. **Default.** |
-| Present              | `"true"`                | Center taps**and** all 8 directional swipes are transliterated.   |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------ |
+| Absent               | *(any)*                  | No transliteration at all — `swipekeymap` has no effect.               |
+| Present              | Absent or `"false"`      | Only center taps (`c` / `C`) are transliterated. **Default.**          |
+| Present              | `"true"`                 | Center taps **and** all 8 directional swipes are transliterated.       |
 
 `swipekeymap` is **inert** on any layout that has no `keymap` attribute — it does nothing on its own.
 
@@ -571,19 +571,19 @@ There is a single, app-wide config (not a list, unlike layouts/keymaps):
   "runtask1": "Task 1",
   "runtask2": "Task 2",
   "amck_patterns": [
-    { "prefix": "..", "suffix": " ", "task": "Expand Task 1" },
-    { "prefix": "==", "regex": "\d+.+\d", "suffix": "\n", "task": "doMath" }
+    { "prefix": "\\.\\.", "suffix": " ", "replace_prefix": "true", "fire_on_suffix": "true", "task": "Expand Task 1" },
+    { "prefix": "(\\s|^)", "regex": "x.{2,}", "suffix": " ", "replace_prefix": "false", "fire_on_suffix": "false", "task": "TextExpander" }
   ]
 }
 ```
 
 | Key               | Required? | Meaning                                                                                                                                 |
-| ----------------- | :-------: | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `amck_replace`  | Optional | Trigger prefix for**replace-whole-field** commands. Default `"##"`.                                                             |
-| `amck_append`   | Optional | Trigger prefix for**replace-trigger-only** commands. Default `"@@"`.                                                            |
-| `amck_timeout`  | Optional | Milliseconds to wait for a task's result before giving up. Default`"15000"`, must be between 1000 and 120000.                         |
-| any other key     |    —    | A**keyword** mapped to the exact **Tasker task name** to run when that keyword follows a trigger. At least one is required. |
-| `amck_patterns` | Optional | Array of open-ended**expand patterns** (see below). Auto-filled with one example entry if omitted or empty.                       |
+| ----------------- | :-------: | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `amck_replace`  | Optional | Trigger prefix for **replace-whole-field** commands. Default `"##"`.                                                              |
+| `amck_append`   | Optional | Trigger prefix for **replace-trigger-only** commands. Default `"@@"`.                                                             |
+| `amck_timeout`  | Optional | Milliseconds to wait for a task's result before giving up. Default `"15000"`, must be between 1000 and 120000.                          |
+| any other key     |    —     | A **keyword** mapped to the exact **Tasker task name** to run when that keyword follows a trigger. At least one is required.       |
+| `amck_patterns` | Optional | Array of regex-based **expand patterns** (see below). Auto-filled with two example entries if omitted or empty.                     |
 
 `amck_replace` and `amck_append` must be different from each other, and every keyword must be unique. If any of `amck_replace`, `amck_append`, `amck_timeout`, or `amck_patterns` is left out, the app fills in its default and re-saves the config so the stored JSON always matches what's actually in effect — and the config dialog always shows you all of these keys up front (rather than requiring you to know a default exists to override it).
 
@@ -596,22 +596,29 @@ Given a task keyword `runtask1` mapped to Tasker task `"Task 1"`:
 
 ### Expand patterns
 
-Each entry in `amck_patterns` describes an open-ended expander, independent of the fixed keyword list above: typing `[prefix]`, then any non-empty text, then `[suffix]` (e.g. `..5+1 ` for prefix `".."` / suffix `" "`) runs `[task]` with that in-between text as `%keyword`, and replaces just that `prefix+content+suffix` span with the result — the same field-editing behavior as an `amck_append` trigger, never the whole field.
+Each entry in `amck_patterns` describes an open-ended expander, independent of the fixed keyword list above. `prefix`, the optional `regex`, and `suffix` are **all regular expressions** (compiled with `MULTILINE`, so `^`/`$` also match right after/before a newline, not only at the very start/end of the whole field) — this is what lets a `prefix` like `"(\\s|^)"` mean "a space, or the very start of a line/field", and it's why a literal character with special regex meaning (like a literal `.`) now needs escaping, e.g. `".."` becomes `"\\.\\."`.
 
-An entry can optionally add `"regex"` to also constrain *what* the in-between content is allowed to look like. When present, the content must match `regex` **in full** (as if wrapped in `^...$`) — a match somewhere inside it isn't enough. If it doesn't fully match, this entry simply doesn't fire: nothing is deleted, no task runs, and the check just runs again on the next keystroke, so the user can keep typing until it does match (or gives up). For example:
+Two extra fields on every entry decide exactly how and when it fires:
 
-```json
-{ "prefix": "==", "regex": "\d+.+\d", "suffix": "\n", "task": "doMath" }
-```
+| Field             | Meaning                                                                                                                                                                                                       |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fire_on_suffix`  | `"true"`: one-shot — the task only ever runs once, the moment `regex` (or, with no `regex`, any non-empty text) is immediately followed by a match for `suffix`. `"false"`: continuous/live — the task runs again on *every* keystroke for as long as the in-between text keeps matching `regex`, and then one final time once `suffix` also matches — after which it stops until you backspace back into that match. |
+| `replace_prefix`  | Whether the text `prefix` matched is included in what gets replaced once a reply lands. `"false"` leaves it completely untouched in the field (this is what stops a leading space or other separator from disappearing along with the replacement); `"true"` replaces it too, same as `amck_patterns` always did before this field existed. |
 
-- `==59+3` + Enter → content is `59+3`, which fully matches `\d+.+\d` (digit(s), then anything, then a digit) → fires `doMath`.
-- `==1+6 ` + Enter → content is `1+6 ` (trailing space) → does **not** fully match `\d+.+\d` (doesn't end in a digit) → does not fire, `==1+6 ` (with the newline) stays in the field untouched.
+Both fields are required on every entry. A `"fire_on_suffix": "true"` entry behaves like a one-shot calculation (e.g. `"..5+1 "` → a `doMath` task, nothing runs until the whole span is typed) while `"fire_on_suffix": "false"` makes it a continuous live-suggestion trigger (e.g. a text-expander popup that updates as you type) that still also fires one final time the moment `suffix` completes. Both otherwise behave identically — same regex-based `prefix`/`suffix`, same `replace_prefix`, same field-editing behavior once a reply lands.
 
-Content between `[prefix]` and `[suffix]` never contains a newline (a newline always ends the search for that entry), so an ordinary regex like `.+` naturally can't accidentally span multiple lines — you don't need to special-case newlines yourself. This also means a "match any single line of text" pattern like `{ "prefix": "^", "regex": ".+", "suffix": "(" }` works as expected: `^some text here(` fires, but a newline anywhere before the `(` prevents that particular `^` from being used as the start of the match. An entry with no `"regex"` (or an empty one) keeps the original behavior: any non-empty content matches. An invalid regex is rejected with an error when you save the config, the same as any other malformed field.
+The task receives `%text1`/`%text2` (the field's content before/after the matched span) and `%keyword` (just the `regex`-matched in-between text) as before, plus two new variables:
+
+- **`%prefix`** — the actual text `prefix` matched (can be empty, e.g. for a zero-width `^` match at the start of a line) — always sent.
+- **`%suffix`** — the actual text `suffix` matched — only sent once it has actually matched (omitted entirely, not just empty, on every earlier "still live" call of a `"fire_on_suffix": "false"` entry).
+
+`regex` remains optional exactly as before — omitting it (or leaving it empty) means "any non-empty in-between text counts", for either value of `fire_on_suffix`. When present, the content must match `regex` **in full** (as if wrapped in `^...$`) — a match somewhere inside it isn't enough. Content between `prefix` and `suffix` never contains a newline (a newline always ends the search for that entry), so an ordinary regex like `.+` naturally can't accidentally span multiple lines. An invalid regex, or a `replace_prefix`/`fire_on_suffix` value that isn't `"true"`/`"false"`, is rejected with an error when you save the config, the same as any other malformed field.
+
+For a `"fire_on_suffix": "false"` entry, backspacing right after `suffix` completes (removing part of what you just typed, whether that's the suffix itself or earlier content) immediately resumes live matching — or lets a fresh final match fire again — rather than that occurrence staying permanently closed. Typing forward instead (anything at all, right after `suffix` completes) is what actually closes it, until you backspace back into it.
 
 ### One-shot undo
 
-Right after a trigger's replacement text lands, a single backspace with nothing typed in between swaps it back for the original trigger+keyword text (e.g. back to `@@runtask1`) instead of deleting a character. Pressing backspace again afterward behaves like an ordinary backspace. Typing anything else instead of that one immediate backspace forfeits the undo, and the result is left in place as plain text.
+Right after a trigger's or pattern's replacement text lands, a single backspace with nothing typed in between swaps it back for the original typed text (e.g. back to `@@runtask1`, or a pattern's `prefix`+`regex`+`suffix` span) instead of deleting a character — this works correctly even if you kept typing more text right after the trigger/pattern while its Tasker task was still running, since that extra text is tracked and carried through untouched on either side of the swap. Pressing backspace again afterward behaves like an ordinary backspace. Typing anything else instead of that one immediate backspace forfeits the undo, and the result is left in place as plain text.
 
 ### Errors
 
@@ -623,11 +630,11 @@ If a task times out, fails, or Tasker can't be reached at all (not installed, or
 
 - A fixed card for `amck_replace`, `amck_append`, and `amck_timeout` — always exactly these 3 fields.
 - A dynamically-growing list of **keyword → Tasker task name** rows (the `"runtask1": "Task 1"` style entries used with the triggers above) — tap **+ Add keyword** for another row, or the ✕ on a row to remove it.
-- A dynamically-growing list of **`amck_patterns` cards**, each with its own `prefix` / `regex` (optional) / `suffix` / `task` fields stacked vertically (4 fields side by side wouldn't fit on a phone-width screen) — tap **+ Add expand pattern** for another card.
+- A dynamically-growing list of **`amck_patterns` cards**, each with `prefix` / `regex` (optional) / `suffix` / `task` fields stacked vertically, plus two checkboxes — **"Replace prefix too"** and **"Fire only on suffix (off = live as you type)"** — for `replace_prefix` and `fire_on_suffix` (stacking everything vertically, rather than side by side, is what keeps this readable on a phone-width screen) — tap **+ Add expand pattern** for another card. A blank config seeds two example cards, one of each `fire_on_suffix` style.
 
-Every field holds exactly what you type, with no trimming or escaping — a prefix/suffix that's just a space stays a space, and a literal `\n` (backslash + n) you type into a suffix field is saved as the same `\n` a directly-typed `"suffix": "\n"` in the raw JSON editor would be, not doubled into `\\n`. This works both ways: opening the builder on an existing config shows a saved `"\n"` suffix as the visible text `\n`, not an invisible newline, so what you see is always what you'd type to reproduce it.
+Every text field holds exactly what you type, with no trimming or escaping — a prefix/suffix that's just a space stays a space, and a literal `\n` (backslash + n) you type into a suffix field is saved as the same `\n` a directly-typed `"suffix": "\n"` in the raw JSON editor would be, not doubled into `\\n`. This works both ways: opening the builder on an existing config shows a saved `"\n"` suffix as the visible text `\n`, not an invisible newline, so what you see is always what you'd type to reproduce it.
 
-**Save** serializes the form back to the same JSON shape and validates it with the exact same rules as the raw JSON editor (non-empty prefix/suffix/task, no duplicate keyword, no duplicate prefix+suffix pattern, valid regex, timeout range, distinct replace/append triggers) — any problem is shown inline instead of being saved. A keyword row with only one of its two fields filled in is flagged the same way, before the JSON is even built. Opening the builder pre-fills every field from whatever's currently saved; if nothing is saved yet (or what's saved doesn't currently parse), it falls back to the same built-in defaults the raw JSON editor shows for a blank config.
+**Save** serializes the form back to the same JSON shape and validates it with the exact same rules as the raw JSON editor (non-empty prefix/suffix/task, no duplicate keyword, no duplicate prefix+suffix pattern, valid regex, timeout range, distinct replace/append triggers, valid `replace_prefix`/`fire_on_suffix`) — any problem is shown inline instead of being saved. A keyword row with only one of its two fields filled in is flagged the same way, before the JSON is even built. Opening the builder pre-fills every field from whatever's currently saved; if nothing is saved yet (or what's saved doesn't currently parse), it falls back to the same built-in defaults the raw JSON editor shows for a blank config.
 
 ---
 
@@ -660,18 +667,21 @@ InputConnection
 **Component responsibilities:**
 
 | Component                           | Responsibility                                                                                                                                                                                 |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Pointers.java`                   | Multi-touch tracking, swipe detection, long press, sliding keys, modifier latching/locking, gesture handling                                                                                   |
-| `KeyModifier.java`                | Shift / Ctrl / Alt / Meta / Fn, compose keys, dead keys, Hangul composition, gesture modifiers, selection mode                                                                                 |
-| `Keymap.java`                     | Loads a keymap's JSON, stores its mappings, provides lookups                                                                                                                                   |
-| `KeymapManager.java`              | Persists all saved keymaps, resolves by name, handles add/remove/rename                                                                                                                        |
-| `KeymapEngine.java`               | Prefix matching, longest-sequence replacement, live conversion, toggle-style cycling, word-tracker synchronization, swipe-gating via`swipekeymap`                                            |
-| `KeymapXmlAttrUtils.java`         | Reads/writes the`name`, `keymap`, and `swipekeymap` attributes on a layout's raw XML, used by both the Layout dialog's Keyboard Attributes card and rename/delete propagation            |
-| `KeymapBuilderActivity.java`      | The guided keymap editor — rows, quick add, duplicate detection, search/filter, raw JSON import                                                                                               |
-| `LayoutsPreference.java`          | The Settings list combining Layout and Keymap rows, default layout selection, referential-integrity enforcement on rename/delete                                                               |
-| `TaskerAutomationConfig.java`     | Parses, validates, and re-serializes the single Tasker Automation JSON (triggers, timeout, task keywords, expand patterns), auto-filling missing defaults                                      |
-| `TaskerTriggerEngine.java`        | Watches typed characters for a configured trigger+keyword or expand pattern, runs the matching Tasker task, and applies its result (replace-field or replace-trigger), including one-shot undo |
-| `TaskerAutomationPreference.java` | The Settings row that opens the Tasker Automation JSON config editor and reloads`TaskerTriggerEngine` on save                                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Pointers.java`                     | Multi-touch tracking, swipe detection, long press, sliding keys, modifier latching/locking, gesture handling                                                                                   |
+| `KeyModifier.java`                  | Shift / Ctrl / Alt / Meta / Fn, compose keys, dead keys, Hangul composition, gesture modifiers, selection mode                                                                                 |
+| `Keymap.java`                       | Loads a keymap's JSON, stores its mappings, provides lookups                                                                                                                                   |
+| `KeymapManager.java`                | Persists all saved keymaps, resolves by name, handles add/remove/rename                                                                                                                        |
+| `KeymapEngine.java`                 | Prefix matching, longest-sequence replacement, live conversion, toggle-style cycling, word-tracker synchronization, swipe-gating via `swipekeymap`                                            |
+| `KeymapXmlAttrUtils.java`           | Reads/writes the `name`, `keymap`, and `swipekeymap` attributes on a layout's raw XML, used by both the Layout dialog's Keyboard Attributes card and rename/delete propagation                |
+| `KeymapBuilderActivity.java`        | The guided keymap editor — rows, quick add, duplicate detection, search/filter, raw JSON import                                                                                                |
+| `LayoutsPreference.java`            | The Settings list combining Layout and Keymap rows, default layout selection, referential-integrity enforcement on rename/delete                                                               |
+| `KeymapJsonUtils.java`              | Hand-rolled, duplicate-preserving JSON parser shared by keymaps and the Tasker Automation config, including the "one or more keys hold a nested array of objects" shape `amck_patterns` needs |
+| `TaskerAutomationConfig.java`       | Parses, validates, and re-serializes the single Tasker Automation JSON (triggers, timeout, task keywords, regex-based expand patterns), auto-filling missing defaults                          |
+| `TaskerTriggerEngine.java`          | Watches typed characters for a configured trigger+keyword or expand pattern, runs the matching Tasker task, and applies its result (replace-field, replace-trigger, or a live/one-shot expand pattern), including one-shot undo |
+| `TaskerBridge.java`                 | Sends the Tasker "run task" intent with `%text1`/`%text2`/`%prefix`/`%keyword`/`%suffix`/a correlation request ID, and awaits the matching reply broadcast, with a timeout                      |
+| `TaskerAutomationPreference.java`   | The Settings row that opens the Tasker Automation JSON config editor and reloads `TaskerTriggerEngine` on save                                                                                 |
+| `TaskerAutomationBuilderActivity.java` | The guided, form-based editor for the same Tasker Automation config, with dynamically-growing keyword and expand-pattern rows                                                              |
 
 ---
 
@@ -714,16 +724,18 @@ Corresponding keymap (grouped output → keys, toggle-style):
 9. **The keymap engine performs longest-match, live replacement** and supports **toggle-style cycling** between related forms.
 10. **Keymaps use grouped output → keys JSON**; `keymap_name` is required.
 11. **Search in Keymap Builder is exact-match, no trimming**:
-    - `"n"`, `" n"`, and `"n "` are different.
-    - `"a, n"` matches rows containing `a` or the exact term `" n"`, not `"n"`.
+  - `"n"`, `" n"`, and `"n "` are different.
+  - `"a, n"` matches rows containing `a` or the exact term `" n"`, not `"n"`.
 12. **Keymap Builder supports Import** for grouped JSON; raw JSON can be copied from the Keymap Dialog.
 13. **Default layout setting**:
-    - **Last used layout** (default): restores the last active layout on reopen.
-    - **Specific layout**: always loads that layout when the keyboard opens.
+  - **Last used layout** (default): restores the last active layout on reopen.
+  - **Specific layout**: always loads that layout when the keyboard opens.
 14. **A keymap edit or deletion takes effect immediately** — there is no stale cache.
 15. **Renaming a keymap updates every layout referencing it automatically.**
 16. **Deleting an in-use keymap requires confirmation**, and clears the attribute from every layout that used it.
 17. **The space bar always shows the active layout's name**, not a space glyph.
+18. **`amck_patterns`' `prefix`/`regex`/`suffix` are all regular expressions** (MULTILINE) — a literal character with special regex meaning needs escaping.
+19. **`fire_on_suffix` picks one-shot (`"true"`) vs. continuous/live (`"false"`) firing; `replace_prefix` picks whether `prefix`'s match is included in the replacement** — both required on every `amck_patterns` entry.
 
 ---
 

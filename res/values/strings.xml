@@ -267,13 +267,15 @@
     <string name="tasker_builder_task_name_hint">Tasker task name</string>
     <string name="tasker_builder_add_task">+ Add keyword</string>
     <string name="tasker_builder_section_patterns">Expand patterns (amck_patterns)</string>
-    <string name="tasker_builder_section_patterns_hint">Typing prefix + text + suffix runs a task and replaces that span with its result</string>
-    <string name="tasker_builder_pattern_prefix_label">Prefix</string>
-    <string name="tasker_builder_pattern_prefix_hint">e.g. ==</string>
+    <string name="tasker_builder_section_patterns_hint">prefix/regex/suffix are regexes. "Fire only on suffix" off makes the task run live as you type; either way, a reply replaces regex+suffix, and prefix too if "Replace prefix" is on</string>
+    <string name="tasker_builder_pattern_prefix_label">Prefix (regex)</string>
+    <string name="tasker_builder_pattern_prefix_hint">e.g. \\.\\. or (\\s|^)</string>
     <string name="tasker_builder_pattern_regex_label">Regex (optional)</string>
     <string name="tasker_builder_pattern_regex_hint">e.g. \\d+.+\\d</string>
-    <string name="tasker_builder_pattern_suffix_label">Suffix</string>
-    <string name="tasker_builder_pattern_suffix_hint">e.g. \\n for newline</string>
+    <string name="tasker_builder_pattern_suffix_label">Suffix (regex)</string>
+    <string name="tasker_builder_pattern_suffix_hint">e.g. \\n for newline, or a space</string>
+    <string name="tasker_builder_pattern_replace_prefix_label">Replace prefix too</string>
+    <string name="tasker_builder_pattern_fire_on_suffix_label">Fire only on suffix (off = live as you type)</string>
     <string name="tasker_builder_pattern_task_label">Task</string>
     <string name="tasker_builder_pattern_task_hint">Tasker task name</string>
     <string name="tasker_builder_add_pattern">+ Add expand pattern</string>

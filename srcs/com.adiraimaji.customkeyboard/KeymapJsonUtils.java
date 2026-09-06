@@ -21,11 +21,12 @@ import java.util.Set;
 
  Also supports one additional shape needed by the Tasker Automation
  config: a top-level object where every value is a plain string
- EXCEPT one specific key, whose value is an array of nested flat
- objects (see [parse_object_with_array_field]) - used for
- "amck_patterns". This is intentionally narrow (a single named
- array field, one level of nesting) rather than a general JSON parser,
- since that's all any caller currently needs. */
+ EXCEPT one or more specific keys, each of whose value is an array of
+ nested flat objects (see [parse_object_with_array_fields]) - used for
+ "amck_patterns" (currently the only such key, though the parser
+ itself supports any number of them). This is intentionally narrow (a
+ fixed set of named array fields, one level of nesting) rather than a
+ general JSON parser, since that's all any caller currently needs. */
 public final class KeymapJsonUtils
 {
     private KeymapJsonUtils() {}
@@ -51,63 +52,62 @@ public final class KeymapJsonUtils
         }
     }
 
-    /** Result of [parse_object_with_array_field]: every plain
-     "key":"string value" pair (in encounter order, excluding the one
-     array field), plus the array field's own entries - each element
-     of the array is itself a flat {"key":"value", ...} object,
-     represented the same way [parse_flat_object] would. [array_field_present]
-     distinguishes "the key was present with an empty array" from "the
-     key wasn't present at all" - both leave [array_objects] empty. */
-    public static final class MixedObjectResult
-    {
-        public final List<Map.Entry<String, String>> string_entries;
-        public final List<List<Map.Entry<String, String>>> array_objects;
-        public final boolean array_field_present;
-
-        public MixedObjectResult(List<Map.Entry<String, String>> string_entries_,
-                                 List<List<Map.Entry<String, String>>> array_objects_,
-                                 boolean array_field_present_)
-        {
-            string_entries = string_entries_;
-            array_objects = array_objects_;
-            array_field_present = array_field_present_;
-        }
-    }
-
     public static List<Map.Entry<String, String>> parse_flat_object(String json) throws ParseError
     {
         int[] pos = new int[]{ 0 };
         return parse_flat_object_body(json, pos, json.length(), Collections.<String>emptySet());
     }
 
-    /** Parses a top-level {"key":"value", ...} object, same as
-     [parse_flat_object], except that [array_field_key]'s value must be
-     a JSON array of flat objects rather than a string - every other
-     key must still have a plain string value, same as
-     [parse_flat_object]. Equivalent to calling the 3-arg overload
-     with an empty [lenient_value_keys]. */
-    public static MixedObjectResult parse_object_with_array_field(String json, String array_field_key) throws ParseError
+    /** Result of [parse_object_with_array_fields]: every plain
+     "key":"string value" pair (in encounter order, excluding any of
+     the named array fields), plus each array field's own entries -
+     each element of an array is itself a flat {"key":"value", ...}
+     object, represented the same way [parse_flat_object] would.
+     [array_fields_present] distinguishes "the key was present with an
+     empty array" from "the key wasn't present at all" - both leave
+     that key's list in [array_objects_by_key] empty (or the key
+     simply absent from the map, since that's the same distinction
+     these two callers need). */
+    public static final class MultiArrayObjectResult
     {
-        return parse_object_with_array_field(json, array_field_key, Collections.<String>emptySet());
+        public final List<Map.Entry<String, String>> string_entries;
+        public final Map<String, List<List<Map.Entry<String, String>>>> array_objects_by_key;
+        public final Set<String> array_fields_present;
+
+        public MultiArrayObjectResult(List<Map.Entry<String, String>> string_entries_,
+                                      Map<String, List<List<Map.Entry<String, String>>>> array_objects_by_key_,
+                                      Set<String> array_fields_present_)
+        {
+            string_entries = string_entries_;
+            array_objects_by_key = array_objects_by_key_;
+            array_fields_present = array_fields_present_;
+        }
+
+        public List<List<Map.Entry<String, String>>> array_objects(String key)
+        {
+            List<List<Map.Entry<String, String>>> objs = array_objects_by_key.get(key);
+            return objs != null ? objs : Collections.<List<Map.Entry<String, String>>>emptyList();
+        }
     }
 
-    /** Same as the 2-arg overload, except that inside each object in
-     the [array_field_key] array, a value whose key is in
-     [lenient_value_keys] is parsed with [parse_json_string]'s lenient
-     mode - see its doc. Used for "regex" inside "amck_patterns"
-     entries, so a regex like "\d+.+\d" can be typed as-is without
-     JSON-escaping every backslash to "\\d+.+\\d" first. Every other
-     value (including [array_field_key] entries not in
-     [lenient_value_keys], and every top-level "key":"value" pair
-     outside the array) keeps strict JSON escaping - unrecognized
-     escapes there still fail loudly, which is what you want for
-     plain text fields where a stray backslash is far more likely to
-     be a typo than an intentional regex. */
-    public static MixedObjectResult parse_object_with_array_field(String json, String array_field_key, Set<String> lenient_value_keys) throws ParseError
+    /** Same as [parse_flat_object], except that any key in
+     [array_field_keys]'s value must be a JSON array of flat objects
+     rather than a string - every other key must still have a plain
+     string value, same as [parse_flat_object]. Used for "amck_patterns",
+     the nested-array field in the Tasker Automation config; a single
+     top-level object can contain any number of separately-named array
+     fields this way, each parsed independently, alongside the plain
+     scalar keys (like the
+     "amck_replace"/"amck_append"/"amck_timeout"/task-name entries)
+     that make up [string_entries]. See [parse_json_string]'s doc for
+     what [lenient_value_keys] does inside each array object - used
+     for "regex" inside "amck_patterns" entries so it can be typed
+     without JSON-escaping every backslash. */
+    public static MultiArrayObjectResult parse_object_with_array_fields(String json, Set<String> array_field_keys, Set<String> lenient_value_keys) throws ParseError
     {
         List<Map.Entry<String, String>> string_entries = new ArrayList<>();
-        List<List<Map.Entry<String, String>>> array_objects = new ArrayList<>();
-        boolean array_field_present = false;
+        Map<String, List<List<Map.Entry<String, String>>>> array_objects_by_key = new LinkedHashMap<>();
+        java.util.HashSet<String> array_fields_present = new java.util.HashSet<>();
 
         int len = json.length();
         int i = skip_ws(json, 0, len);
@@ -116,7 +116,7 @@ public final class KeymapJsonUtils
         i++;
         i = skip_ws(json, i, len);
         if (i < len && json.charAt(i) == '}')
-            return new MixedObjectResult(string_entries, array_objects, array_field_present);
+            return new MultiArrayObjectResult(string_entries, array_objects_by_key, array_fields_present);
 
         while (true)
         {
@@ -131,13 +131,14 @@ public final class KeymapJsonUtils
             i++;
             i = skip_ws(json, i, len);
 
-            if (key.equals(array_field_key))
+            if (array_field_keys.contains(key))
             {
                 if (i >= len || json.charAt(i) != '[')
                     throw new ParseError("Expected an array for key \"" + key + "\"");
                 i++;
                 i = skip_ws(json, i, len);
-                array_field_present = true;
+                array_fields_present.add(key);
+                List<List<Map.Entry<String, String>>> array_objects = new ArrayList<>();
                 if (i < len && json.charAt(i) == ']')
                 {
                     i++;
@@ -169,6 +170,7 @@ public final class KeymapJsonUtils
                         }
                     }
                 }
+                array_objects_by_key.put(key, array_objects);
             }
             else
             {
@@ -195,7 +197,7 @@ public final class KeymapJsonUtils
                 throw new ParseError("Expected ',' or '}' near position " + i);
             }
         }
-        return new MixedObjectResult(string_entries, array_objects, array_field_present);
+        return new MultiArrayObjectResult(string_entries, array_objects_by_key, array_fields_present);
     }
 
     /** Parses a single flat {"key":"value", ...} object starting at
@@ -203,7 +205,7 @@ public final class KeymapJsonUtils
      [pos[0]] to just past the matching closing '}'. Shared by
      [parse_flat_object] (the whole document is one such object,
      always with an empty [lenient_value_keys]) and
-     [parse_object_with_array_field] (each array element is one, with
+     [parse_object_with_array_fields] (each array element is one, with
      whatever [lenient_value_keys] that caller was given). See
      [parse_json_string] for what "lenient" means for a given key's
      value. */
@@ -364,7 +366,7 @@ public final class KeymapJsonUtils
          intentional, so this fails loudly rather than silently
          keeping mismatched text.
        - true (used only for "regex" values - see
-         [parse_object_with_array_field]): any other \X (\d, \w, \s,
+         [parse_object_with_array_fields]): any other \X (\d, \w, \s,
          \+, \., \(, digits, etc.) is kept exactly as typed - literal
          backslash followed by that character - rather than
          rejected, so a regex like "\d+.+\d" can be typed directly

@@ -91,12 +91,6 @@ public final class TaskerBridge
                                 String text1, String text2, String keyword,
                                 long timeout_ms, final ResultCallback callback)
     {
-        final String request_id = System.currentTimeMillis() + "-" + request_counter.incrementAndGet();
-        final String result_action = ctx.getPackageName() + RESULT_ACTION_SUFFIX;
-
-        Intent request = new Intent(ACTION_TASK);
-        request.putExtra(EXTRA_TASK_NAME, task_name);
-
         ArrayList<String> var_names = new ArrayList<>();
         ArrayList<String> var_values = new ArrayList<>();
         var_names.add("%text1");
@@ -108,6 +102,67 @@ public final class TaskerBridge
         }
         var_names.add("%keyword");
         var_values.add(keyword != null ? keyword : "");
+        run_task_internal(ctx, task_name, var_names, var_values, timeout_ms, callback);
+    }
+
+    /** Same as the 5-var-name overload above, for "amck_patterns" -
+     which additionally has a (regex-matched) [prefix] and, once the
+     configured "suffix" regex has actually been matched, a [suffix] -
+     both passed the same "UNSET rather than empty" way as [text2]:
+      %prefix - the actual text the entry's "prefix" regex matched at
+                the start of this occurrence (e.g. a single space, or
+                empty for a zero-width match like "^") - left UNSET
+                only when [prefix] is null (an empty-but-real match,
+                e.g. "^", is still sent, as an empty string, since
+                "prefix matched" and "prefix wasn't configured" are
+                different things worth Tasker being able to tell
+                apart with an "is set" check)
+      %suffix - the actual text the entry's "suffix" regex matched,
+                only present at all on the one final call fired the
+                moment that match completes - left UNSET on every
+                earlier "still live" call for the same occurrence,
+                where the word isn't finished yet and there's nothing
+                to put here
+     [keyword] here is always just the in-between content the entry's
+     own "regex" matched - never [prefix] or [suffix]. */
+    public static void run_task(final Context ctx, String task_name,
+                                String text1, String text2, String prefix, String keyword, String suffix,
+                                long timeout_ms, final ResultCallback callback)
+    {
+        ArrayList<String> var_names = new ArrayList<>();
+        ArrayList<String> var_values = new ArrayList<>();
+        var_names.add("%text1");
+        var_values.add(text1 != null ? text1 : "");
+        if (text2 != null && !text2.isEmpty())
+        {
+            var_names.add("%text2");
+            var_values.add(text2);
+        }
+        if (prefix != null)
+        {
+            var_names.add("%prefix");
+            var_values.add(prefix);
+        }
+        var_names.add("%keyword");
+        var_values.add(keyword != null ? keyword : "");
+        if (suffix != null)
+        {
+            var_names.add("%suffix");
+            var_values.add(suffix);
+        }
+        run_task_internal(ctx, task_name, var_names, var_values, timeout_ms, callback);
+    }
+
+    private static void run_task_internal(final Context ctx, String task_name,
+                                          ArrayList<String> var_names, ArrayList<String> var_values,
+                                          long timeout_ms, final ResultCallback callback)
+    {
+        final String request_id = System.currentTimeMillis() + "-" + request_counter.incrementAndGet();
+        final String result_action = ctx.getPackageName() + RESULT_ACTION_SUFFIX;
+
+        Intent request = new Intent(ACTION_TASK);
+        request.putExtra(EXTRA_TASK_NAME, task_name);
+
         var_names.add("%requestid");
         var_values.add(request_id);
         request.putStringArrayListExtra(EXTRA_VAR_NAMES_LIST, var_names);

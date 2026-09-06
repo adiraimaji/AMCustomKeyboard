@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -41,10 +42,11 @@ import java.util.Map;
  (the "runtask1": "Task 1" style entries used with the amck_replace/
  amck_append triggers above).
  - A dynamically-growing list of "amck_patterns" entries, each its
- own card with 4 stacked fields (prefix, optional regex, suffix,
- task) - stacked rather than side-by-side since 4 inputs would be
- unreadably cramped on a phone-width row, unlike the 2-field
- keyword/task rows above.
+ own card with prefix/optional regex/suffix/task (all regexes except
+ task) stacked, plus two checkboxes - "replace_prefix" and
+ "fire_on_suffix" - stacked rather than side-by-side since that many
+ inputs would be unreadably cramped on a phone-width row, unlike the
+ 2-field keyword/task rows above.
 
  On Save, the form is serialized to the same JSON shape
  [TaskerAutomationConfig.parse] expects and validated with that same
@@ -88,15 +90,20 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
         final EditText regex;
         final EditText suffix;
         final EditText task;
+        final CheckBox replace_prefix;
+        final CheckBox fire_on_suffix;
         final TextView badge;
 
-        PatternRow(LinearLayout layout_, EditText prefix_, EditText regex_, EditText suffix_, EditText task_, TextView badge_)
+        PatternRow(LinearLayout layout_, EditText prefix_, EditText regex_, EditText suffix_, EditText task_,
+                  CheckBox replace_prefix_, CheckBox fire_on_suffix_, TextView badge_)
         {
             layout = layout_;
             prefix = prefix_;
             regex = regex_;
             suffix = suffix_;
             task = task_;
+            replace_prefix = replace_prefix_;
+            fire_on_suffix = fire_on_suffix_;
             badge = badge_;
         }
     }
@@ -128,7 +135,7 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
         load_existing_or_defaults();
 
         findViewById(R.id.tab_add_task_button).setOnClickListener(v -> add_task_row("", ""));
-        findViewById(R.id.tab_add_pattern_button).setOnClickListener(v -> add_pattern_row("", "", "", ""));
+        findViewById(R.id.tab_add_pattern_button).setOnClickListener(v -> add_pattern_row("", "", "", "", true, true));
         findViewById(R.id.tab_save_button).setOnClickListener(v -> save());
     }
 
@@ -159,7 +166,7 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
                 add_task_row(display_form(e.getKey()), display_form(e.getValue()));
             for (TaskerAutomationConfig.ExpandPattern p : config.expand_patterns)
                 add_pattern_row(display_form(p.prefix), p.regex == null ? "" : display_form(p.regex),
-                        display_form(p.suffix), display_form(p.task));
+                        display_form(p.suffix), display_form(p.task), p.replace_prefix, p.fire_on_suffix);
         }
         else
         {
@@ -168,7 +175,13 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
             _timeout_input.setText(String.valueOf(TaskerAutomationConfig.DEFAULT_TIMEOUT_MS));
             add_task_row("runtask1", "Task 1");
             add_pattern_row(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX, "",
-                    TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX, TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_TASK);
+                    TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX, TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_TASK,
+                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX),
+                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_FIRE_ON_SUFFIX));
+            add_pattern_row(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_PREFIX, TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REGEX,
+                    TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_SUFFIX, TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_TASK,
+                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REPLACE_PREFIX),
+                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_FIRE_ON_SUFFIX));
         }
 
         if (_task_rows.isEmpty())
@@ -273,7 +286,8 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
             _task_rows.get(i).badge.setText(String.valueOf(i + 1));
     }
 
-    private PatternRow add_pattern_row(String prefix, String regex, String suffix, String task)
+    private PatternRow add_pattern_row(String prefix, String regex, String suffix, String task,
+                                       boolean replace_prefix, boolean fire_on_suffix)
     {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -303,8 +317,13 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
                 R.string.tasker_builder_pattern_suffix_hint, suffix);
         EditText task_input = add_pattern_field(card, R.string.tasker_builder_pattern_task_label,
                 R.string.tasker_builder_pattern_task_hint, task);
+        CheckBox replace_prefix_input = add_pattern_checkbox(card,
+                R.string.tasker_builder_pattern_replace_prefix_label, replace_prefix);
+        CheckBox fire_on_suffix_input = add_pattern_checkbox(card,
+                R.string.tasker_builder_pattern_fire_on_suffix_label, fire_on_suffix);
 
-        final PatternRow pattern_row = new PatternRow(card, prefix_input, regex_input, suffix_input, task_input, badge);
+        final PatternRow pattern_row = new PatternRow(card, prefix_input, regex_input, suffix_input, task_input,
+                replace_prefix_input, fire_on_suffix_input, badge);
         _pattern_rows.add(pattern_row);
         _patterns_container.addView(card, card_lp);
         refresh_pattern_indices();
@@ -332,6 +351,25 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
         lp.topMargin = dp(4);
         parent.addView(et, lp);
         return et;
+    }
+
+    /** Adds one boolean field (a checkbox with its label as the
+     checkbox's own text, rather than a separate [add_field_label]
+     above it like the text fields get - a checkbox's label reads
+     naturally right next to the box, unlike a text field's). Used for
+     "replace_prefix"/"fire_on_suffix" on an "amck_patterns" card. */
+    private CheckBox add_pattern_checkbox(LinearLayout parent, int label_res, boolean initial_checked)
+    {
+        CheckBox cb = new CheckBox(this);
+        cb.setText(label_res);
+        cb.setTextColor(ContextCompat.getColor(this, R.color.settings_on_surface_variant));
+        cb.setTextSize(12f);
+        cb.setChecked(initial_checked);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(6);
+        parent.addView(cb, lp);
+        return cb;
     }
 
     private void refresh_pattern_indices()
@@ -480,6 +518,8 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
             if (!regex.isEmpty())
                 obj.append("      ").append(json_line(TaskerAutomationConfig.KEY_EXPAND_PATTERN_REGEX, regex)).append(",\n");
             obj.append("      ").append(json_line("suffix", suffix)).append(",\n");
+            obj.append("      ").append(json_line("replace_prefix", String.valueOf(row.replace_prefix.isChecked()))).append(",\n");
+            obj.append("      ").append(json_line("fire_on_suffix", String.valueOf(row.fire_on_suffix.isChecked()))).append(",\n");
             obj.append("      ").append(json_line("task", task)).append("\n");
             obj.append("    }");
             pattern_objects.add(obj.toString());

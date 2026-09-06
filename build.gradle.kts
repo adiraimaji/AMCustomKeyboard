@@ -24,8 +24,8 @@ android {
     applicationId = "com.adiraimaji.customkeyboard"
     minSdk = 21
     targetSdk { version = release(36) }
-    versionCode = 9
-    versionName = "1.3.0"
+    versionCode = 10
+    versionName = "1.4.0"
   }
 
   sourceSets {

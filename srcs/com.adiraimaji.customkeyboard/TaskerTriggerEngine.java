@@ -7,6 +7,9 @@ import android.view.inputmethod.InputConnection;
 import com.adiraimaji.customkeyboard.prefs.TaskerAutomationManager;
 
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
 
 /** Watches raw typed characters for a configured trigger+keyword
  sequence (e.g. "##runtask1" or "@@runtask1") and, when one
@@ -47,24 +50,73 @@ import java.util.HashSet;
  backspace forfeits the undo - the restored/expanded text is then
  left alone, as plain text.
 
- Expand patterns ("amck_patterns"): a second, independent kind
- of trigger for open-ended text, e.g. prefix ".." + suffix " " turns
- "..5+1 " into whatever "Expand Task 1" returns, with "5+1" as
- %keyword. Unlike the fixed dictionary above (a handful of known
- keywords, matched character-by-character as they're typed), the
- content here is arbitrary and unbounded, so it can't be tracked the
- same way. Instead [check_expand_patterns] is called after every
- committed character (forward-typed or backspace) and simply looks at
- the field's actual current text: does it now end with some
- configured suffix, and if so, is there a matching prefix somewhere
- before that (with at least one character of content in between - and,
- if that entry configures an optional "regex", does the content match
- it in full)? This needs no dedicated state at all - it's the same
- read-the-actual-field-text philosophy [handle_backspace] already
- uses for typo-correction, just applied per-keystroke rather than
- only on backspace. Firing one always behaves like an "amck_append"
- trigger: only the matched prefix+content+suffix span is replaced,
- the rest of the field is untouched - and reuses the exact same
+ Expand patterns ("amck_patterns"): a second, independent kind of
+ trigger for open-ended text, built around three regexes ("prefix",
+ the optional "regex", and "suffix" - see [TaskerAutomationConfig]'s
+ "amck_patterns" doc for the full matching rules and what
+ "replace_prefix"/"fire_on_suffix" each control). [check_expand_patterns]
+ is called after every committed character (forward-typed or
+ backspace) and looks at the field's actual current text: find the
+ closest "prefix" match before the cursor, then see whether what
+ follows it satisfies a final ("regex" then "suffix", ending exactly
+ at the cursor) or - for a "fire_on_suffix": "false" entry only - a
+ live (just "regex", no "suffix" yet) match. This needs no dedicated
+ state for MATCHING itself - it's the same read-the-actual-field-text
+ philosophy [handle_backspace] already uses for typo-correction, just
+ applied per-keystroke - but firing (see [fire_expand]) IS tracked,
+ two different ways, for two different reasons:
+
+ - [_expand_no_match_before_len]: protects a fire's own OUTPUT from
+ being reinterpreted as a fresh prefix - e.g. a doMath-style task
+ replying "8*3=24" for prefix "="/suffix "\n" must not let the "="
+ inside that reply itself be treated as a new trigger the next time
+ Enter is pressed. Advanced (in [fire_expand]'s callback, once a
+ reply actually lands and gets applied) to just past the inserted
+ output; anything before that position is never eligible as a fresh
+ "prefix" match, for ANY entry (shared across all of them, since one
+ entry's output could easily contain characters another entry's
+ "prefix"/"suffix" would match). See its own doc for the shrink-on-
+ backspace and undo-restores-it details - unchanged from before this
+ feature grew "regex" prefixes/suffixes and a live-firing mode.
+
+ - Per-entry "closed" tracking ([_expand_closed_prefix_end] /
+ [_expand_closed_content]): stops the SAME occurrence from re-firing
+ over and over as the user keeps typing forward past an already-
+ completed "regex"+"suffix" match (which - unlike the classic
+ one-shot case, where the matched text is about to be replaced
+ anyway - matters a lot for a "fire_on_suffix": "false" entry, since
+ the matched span is left sitting untouched in the field for as long
+ as it takes a reply to arrive, so it would otherwise still be
+ sitting there, still matching, on every subsequent keystroke).
+ Recorded the instant a final match is detected (both fire_on_suffix
+ values - it's what makes a classic entry fire only once, too), and
+ checked by re-verifying the exact closed text is STILL there,
+ unchanged, with something typed after it: if so, that occurrence is
+ skipped entirely; if the check fails - because the user backspaced
+ into the closed span (or past it) rather than typing forward - it's
+ treated as stale and the occurrence is evaluated completely fresh,
+ which is what makes backspacing right after "suffix" completes
+ immediately resume live firing (or allow a fresh final fire) rather
+ than staying permanently closed. This is is entirely separate from,
+ and in addition to, [_expand_no_match_before_len] above - they
+ protect against two different things and neither can substitute for
+ the other.
+
+ Firing itself (see [fire_expand]) never touches the field up front,
+ for either fire_on_suffix value: the whole matched span - "prefix"'s
+ match, "regex"'s match, and "suffix"'s match once it exists - is left
+ exactly as typed while [task] runs, and is only ever replaced once
+ (and if) that specific call's reply arrives with non-empty text,
+ verified against the field's current text before being applied - so
+ for a "fire_on_suffix": "false" entry, with several overlapping calls
+ potentially in flight for the same occurrence, whichever reply lands
+ FIRST wins and mutates the field; every other call's own attempt to
+ apply its reply then correctly finds the field no longer matches what
+ it expected and is silently dropped, however much later it eventually
+ arrives (even one from before "suffix" matched, replying after the
+ occurrence is otherwise already finished). A timeout, an unreachable
+ Tasker, or an empty reply all simply leave the field untouched -
+ nothing to "restore" because nothing was removed. Reuses the same
  one-shot undo as dictionary triggers. */
 public class TaskerTriggerEngine
 {
@@ -75,6 +127,15 @@ public class TaskerTriggerEngine
      content, small enough to keep the per-character InputConnection
      peek cheap. */
     private static final int MAX_EXPAND_SCAN_CHARS = 4000;
+
+    /** Bounds how many trailing characters of an "amck_patterns"
+     occurrence's in-between text [find_suffix_split] tries as a
+     candidate "suffix" match - realistic suffixes are a handful of
+     characters at most, and without this bound, checking every
+     possible split point would re-run "regex" against a
+     shrinking-by-one-character prefix of the in-between text for its
+     entire length on every keystroke. */
+    private static final int MAX_EXPAND_SUFFIX_CHARS = 40;
 
     private static final TaskerTriggerEngine INSTANCE = new TaskerTriggerEngine();
 
@@ -113,8 +174,23 @@ public class TaskerTriggerEngine
      field. */
     private boolean _paused = false;
 
+    // How many upcoming selection-change callbacks (see
+    // [consume_self_edit]) should still be treated as self-inflicted
+    // rather than external. A single-call site like [commit_literal]
+    // bumps this by 1 right before its one InputConnection call; a
+    // multi-call site that applies a result in one batch (delete, then
+    // insert, sometimes a second insert - see [try_undo_replacement],
+    // [fire]'s "replace" branch, and [fire_expand]) bumps it
+    // once per call it's about to make. This must be a credit count,
+    // not a single "last value seen" flag: some editors fire more than
+    // one [onUpdateSelection] callback for a single batched edit (one
+    // per delete/insert rather than one per beginBatchEdit/endBatchEdit
+    // pair), and a "last value" comparison only ever recognises the
+    // *first* of those as self, then misreads every following callback
+    // from that same batch as an external change and wipes state (e.g.
+    // an [arm_undo]'d undo, see [reset]) that was just set up moments
+    // earlier - before the user ever gets a chance to act on it.
     private int _self_edit_count = 0;
-    private int _last_consumed_self_edit_count = 0;
 
     /** Bumped only on a genuine field/app focus change (see
      [new_field_started], called once per [Keyboard2.onStartInputView]
@@ -162,6 +238,29 @@ public class TaskerTriggerEngine
      deleted down to nothing first. */
     private int _expand_no_match_before_len = 0;
 
+    /** Same length as [_config.expand_patterns], indices matching
+     1:1 - see the class doc's "closed" tracking paragraph. -1 (no
+     entry) means that pattern isn't currently closed. Rebuilt
+     (resized and cleared) in [reload] every time [_config] changes,
+     and cleared (same size, values only) in [new_field_started]. */
+    private int[] _expand_closed_prefix_end = new int[0];
+    /** Companion to [_expand_closed_prefix_end] - the exact
+     keyword+suffix text that was closed at that position, so a later
+     scan can tell "still closed" (that exact text is still sitting
+     there, with something typed after it) apart from "stale, the
+     user backspaced into or through it" (re-evaluate fresh). */
+    private String[] _expand_closed_content = new String[0];
+    /** Same length as [_config.expand_patterns] again - the
+     [prefix_end] position a "Running ..." toast was last shown for
+     while that "fire_on_suffix": "false" entry's occurrence was still
+     live (not yet reached "suffix"), or -1 if none is currently
+     active. Lets [check_expand_patterns] show that toast only once
+     per occurrence rather than on every one of its repeat fires. A
+     stale leftover value is harmless - see [_expand_closed_prefix_end]'s
+     sibling doc for why comparing positions for exact equality never
+     needs eager invalidation. */
+    private int[] _expand_live_toast_prefix_end = new int[0];
+
     /** One-shot undo state for the replacement that was just
      committed - null/0 whenever there is nothing to undo. See
      [try_undo_replacement] and [arm_undo]. */
@@ -202,7 +301,27 @@ public class TaskerTriggerEngine
     {
         _session_id++;
         _expand_no_match_before_len = 0;
+        reset_expand_closed_state();
         reset();
+    }
+
+    /** (Re)builds [_expand_closed_prefix_end]/[_expand_closed_content]/
+     [_expand_live_toast_prefix_end], sized to whatever
+     [_config.expand_patterns] currently is (0 if [_config] is null),
+     with every slot cleared to "nothing closed / no toast shown".
+     Called both when the config itself changes (from [reload], where
+     the size may genuinely differ from before) and on every field
+     change (from [new_field_started], where the size never actually
+     changes but re-clearing this way is simpler than a separate
+     "same size, just reset values" path). */
+    private void reset_expand_closed_state()
+    {
+        int n = (_config != null) ? _config.expand_patterns.size() : 0;
+        _expand_closed_prefix_end = new int[n];
+        _expand_closed_content = new String[n];
+        _expand_live_toast_prefix_end = new int[n];
+        java.util.Arrays.fill(_expand_closed_prefix_end, -1);
+        java.util.Arrays.fill(_expand_live_toast_prefix_end, -1);
     }
 
     /** Reloads the single stored Tasker Automation config from storage.
@@ -222,7 +341,10 @@ public class TaskerTriggerEngine
 
         String json = TaskerAutomationManager.load(ctx);
         if (json == null)
+        {
+            reset_expand_closed_state();
             return;
+        }
 
         try
         {
@@ -230,6 +352,7 @@ public class TaskerTriggerEngine
         }
         catch (Exception e)
         {
+            reset_expand_closed_state();
             return; // Invalid config saved somehow - behave as if unset.
         }
 
@@ -238,6 +361,7 @@ public class TaskerTriggerEngine
             add_full_command(_config.replace_trigger + keyword);
             add_full_command(_config.append_trigger + keyword);
         }
+        reset_expand_closed_state();
     }
 
     private void add_full_command(String full)
@@ -393,7 +517,10 @@ public class TaskerTriggerEngine
         final int expand_prev_boundary = _undo_expand_prev_boundary;
         clear_undo();
 
-        _self_edit_count++;
+        // One credit per InputConnection call about to be made below
+        // (delete, then [before], then optionally [after]) - see
+        // [_self_edit_count].
+        _self_edit_count += (after != null && after.length() > 0) ? 3 : 2;
         try
         {
             conn.beginBatchEdit();
@@ -593,7 +720,10 @@ public class TaskerTriggerEngine
 
                 try
                 {
-                    _self_edit_count++;
+                    // One credit per InputConnection call about to be
+                    // made below (the delete only happens for
+                    // "replace") - see [_self_edit_count].
+                    _self_edit_count += final_is_replace ? 2 : 1;
                     late_conn.beginBatchEdit();
                     try
                     {
@@ -625,10 +755,14 @@ public class TaskerTriggerEngine
      or a plain commit) or removed via backspace (but NOT right after
      [try_undo_replacement] restores text - see the call sites in
      KeyEventHandler). Looks at the field's actual current text and,
-     if it now completes some configured "amck_patterns" entry,
-     fires it. Safe to call with [conn] null, with no expand patterns
-     configured, or if talking to [conn] fails for any reason - always
-     just does nothing rather than throwing. */
+     for each configured "amck_patterns" entry, finds the closest
+     "prefix" match before the cursor and fires [fire_expand] whenever
+     the class doc's "Expand patterns" rules say to - once only, for a
+     "fire_on_suffix": "true" entry; possibly many times (see the
+     "closed" tracking in the class doc), for a "false" one. Safe to
+     call with [conn] null, with no expand patterns configured, or if
+     talking to [conn] fails for any reason - always just does nothing
+     rather than throwing. */
     public void check_expand_patterns(Context ctx, InputConnection conn,
                                       KeymapEngine.WordTrackerCallback wt,
                                       InputConnectionProvider late_conn_provider)
@@ -648,118 +782,224 @@ public class TaskerTriggerEngine
             return;
         }
 
-        // [_expand_no_match_before_len] is an absolute offset that was
-        // only ever meant to protect a *previous fire's own result*
-        // from being rescanned - it was never meant to permanently
-        // wall off that position once the result is edited away. If
-        // the field is now shorter than that offset, the user has
-        // backspaced into (or through) the protected span, so shrink
-        // the boundary down to what's actually left. Without this,
-        // deleting a fired result (in full or in part) and retyping
-        // the exact same prefix/suffix at that same position would
-        // stay blocked forever, since [prefix_idx] there would always
-        // read as "before" a boundary that never moved - until the
-        // keyboard is closed and reopened (the only other place this
-        // offset resets). This mirrors [handle_backspace] re-deriving
-        // its own state from the live field text rather than trusting
-        // stale bookkeeping.
+        // See [_expand_no_match_before_len]'s doc for why this shrinks
+        // (never grows) to the field's current length here, every call.
         if (text_before.length() < _expand_no_match_before_len)
             _expand_no_match_before_len = text_before.length();
 
         if (text_before.isEmpty())
             return;
 
-        for (TaskerAutomationConfig.ExpandPattern p : _config.expand_patterns)
+        int global_boundary = Math.min(_expand_no_match_before_len, text_before.length());
+
+        for (int i = 0; i < _config.expand_patterns.size(); i++)
         {
-            if (!text_before.endsWith(p.suffix))
+            TaskerAutomationConfig.ExpandPattern p = _config.expand_patterns.get(i);
+
+            // Collect every "prefix" match not blocked by
+            // [global_boundary], as [start, end] pairs, then try them
+            // from CLOSEST to the cursor backward - that's virtually
+            // always the intended occurrence, since any earlier
+            // match's in-between text would have to span all the way
+            // through this later, more specific one too, which will
+            // essentially never satisfy "regex".
+            List<int[]> prefix_matches = new ArrayList<>();
+            try
+            {
+                Matcher pm = p.compiled_prefix.matcher(text_before);
+                while (pm.find())
+                {
+                    if (pm.end() >= global_boundary)
+                        prefix_matches.add(new int[]{ pm.start(), pm.end() });
+                }
+            }
+            catch (Exception e)
+            {
+                Log.w(LOG_TAG, "matching \"prefix\" failed for an amck_patterns entry", e);
                 continue;
-            int content_end = text_before.length() - p.suffix.length();
-            if (content_end < p.prefix.length())
-                continue; // Not even room for prefix + suffix, let alone content.
-            int search_from = content_end - p.prefix.length();
-            int prefix_idx = text_before.lastIndexOf(p.prefix, search_from);
-            if (prefix_idx < 0)
-                continue;
-            // Don't let the result of a previous fire in this same
-            // field be reinterpreted as a fresh prefix - e.g. firing
-            // on prefix "=" suffix "\n" against "8*3=24" must not let
-            // a later, unrelated Enter press treat the "=24" already
-            // sitting there as a new match. Only a prefix the user
-            // typed *after* that point counts. See
-            // [_expand_no_match_before_len]. Clamped to the current
-            // text's length so a boundary from before some
-            // intervening backspace can't block matching forever.
-            if (prefix_idx < Math.min(_expand_no_match_before_len, text_before.length()))
-                continue;
-            // The keyword (the content between prefix and suffix) must
-            // never contain a newline. If a newline was typed anywhere
-            // in between, the prefix found above is stale - the user
-            // has moved to a new line, so matching must not reach back
-            // across it. Rather than fail the whole pattern, this
-            // should behave as if that stale prefix had never been
-            // typed: only a prefix typed *after* the newline can still
-            // complete this pattern, and since [lastIndexOf] above
-            // already returned the closest possible occurrence at or
-            // before [search_from], no closer occurrence exists after
-            // the newline - so there is nothing left to try here. Note
-            // this only concerns a newline *inside* the keyword span;
-            // a newline that is itself the configured suffix (already
-            // matched above via [endsWith]) is the terminator, not
-            // part of the keyword, and content_end already excludes it.
-            int prefix_end = prefix_idx + p.prefix.length();
-            int newline_in_content = text_before.indexOf('\n', prefix_end);
-            if (newline_in_content >= 0 && newline_in_content < content_end)
-                continue;
-            String content = text_before.substring(prefix_end, content_end);
-            if (content.isEmpty())
-                continue; // Require non-empty content - otherwise ordinary
-            // punctuation like ".. " (an ellipsis before a
-            // space) would misfire as an empty-content match.
-            // Optional "regex" constraint (see [TaskerAutomationConfig
-            // .ExpandPattern]): the content must match it *in full*,
-            // not just somewhere inside it. A partial match doesn't
-            // count as a fire - this is treated exactly like the
-            // suffix not having completed anything at all: nothing
-            // runs, nothing is deleted, and the very next keystroke
-            // simply re-runs this same check against whatever the
-            // field looks like then.
-            if (p.compiled_regex != null && !p.compiled_regex.matcher(content).matches())
-                continue;
-            String matched_span = text_before.substring(prefix_idx);
-            fire_expand(ctx, conn, wt, late_conn_provider, matched_span, content, p.task);
-            return; // Only one pattern fires per keystroke.
+            }
+
+            boolean acted = false;
+            for (int j = prefix_matches.size() - 1; j >= 0 && !acted; j--)
+            {
+                int prefix_start = prefix_matches.get(j)[0];
+                int prefix_end = prefix_matches.get(j)[1];
+
+                // Is this occurrence "closed" (see the class doc)? Only
+                // still closed if the EXACT text that closed it is
+                // still sitting there unedited, with something typed
+                // after it - otherwise (backspaced into or past it)
+                // this is stale: fall through and evaluate fresh.
+                if (_expand_closed_prefix_end[i] == prefix_end)
+                {
+                    String closed_content = _expand_closed_content[i];
+                    if (text_before.length() > prefix_end + closed_content.length()
+                            && text_before.regionMatches(prefix_end, closed_content, 0, closed_content.length()))
+                        continue; // Still closed - try an earlier prefix match, if any.
+                }
+
+                String content = text_before.substring(prefix_end);
+
+                // A newline anywhere in the in-between text means the
+                // user has moved to a new line since [prefix] matched -
+                // this occurrence is stale.
+                if (content.indexOf('\n') >= 0)
+                    continue;
+
+                int split = find_suffix_split(content, p);
+                if (split >= 0)
+                {
+                    // A full "regex"+"suffix" match, ending exactly at
+                    // the cursor. Fires for BOTH values of
+                    // "fire_on_suffix" - it's what makes a
+                    // "fire_on_suffix": "true" entry fire at all, and
+                    // what makes a "false" one fire ONE LAST TIME. Close
+                    // this occurrence either way - see the class doc.
+                    String prefix_match = text_before.substring(prefix_start, prefix_end);
+                    String keyword = content.substring(0, split);
+                    String suffix_match = content.substring(split);
+                    _expand_closed_prefix_end[i] = prefix_end;
+                    _expand_closed_content[i] = keyword + suffix_match;
+                    _expand_live_toast_prefix_end[i] = -1; // Finished - nothing left to (re)toast for.
+                    if (p.fire_on_suffix)
+                        android.widget.Toast.makeText(ctx,
+                                "Running \"" + p.task + "\"\u2026", android.widget.Toast.LENGTH_SHORT).show();
+                    fire_expand(ctx, conn, wt, late_conn_provider,
+                            text_before.substring(0, prefix_start), prefix_match, keyword, suffix_match, p);
+                    acted = true;
+                }
+                else if (!p.fire_on_suffix && matches_keyword(content, p))
+                {
+                    // Still live - no "suffix" yet, but the in-between
+                    // text so far already satisfies "regex" (or is just
+                    // non-empty, if "regex" is omitted). Only entries
+                    // with "fire_on_suffix": "false" ever take this
+                    // branch - a "true" entry stays silent until
+                    // "suffix" completes a match above. Toast only the
+                    // first time THIS occurrence (same [prefix_end])
+                    // starts qualifying, not on every repeat keystroke.
+                    if (_expand_live_toast_prefix_end[i] != prefix_end)
+                    {
+                        _expand_live_toast_prefix_end[i] = prefix_end;
+                        android.widget.Toast.makeText(ctx,
+                                "Running \"" + p.task + "\"\u2026", android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                    String prefix_match = text_before.substring(prefix_start, prefix_end);
+                    fire_expand(ctx, conn, wt, late_conn_provider,
+                            text_before.substring(0, prefix_start), prefix_match, content, null, p);
+                    acted = true;
+                }
+                // Otherwise: too little typed yet, or content no longer
+                // matches at all - try an earlier prefix match, if any.
+            }
+
+            if (acted)
+                return; // Only one entry acts per keystroke.
         }
     }
 
-    private void fire_expand(final Context ctx, InputConnection conn,
-                             KeymapEngine.WordTrackerCallback wt,
-                             final InputConnectionProvider late_conn_provider,
-                             final String matched_span, String content, String task_name)
+    /** Whether [content] counts as a valid keyword on its own - used
+     both by [find_suffix_split] (for the part before a candidate
+     "suffix" match) and directly for a live ("fire_on_suffix": "false",
+     no "suffix" yet) check: non-empty is always required, and, when
+     [p.regex] is configured, [content] must match it in full (i.e. as
+     if wrapped in ^...$ - a partial/"contains" match is not enough).
+     With no "regex" configured, any non-empty [content] qualifies. */
+    private boolean matches_keyword(String content, TaskerAutomationConfig.ExpandPattern p)
     {
-        // Any character that got us here already ran through
-        // [handle_char] first (which clears undo for every character
-        // when dictionary triggers are configured) - but expand
-        // patterns work even with none configured, so clear it here
-        // too rather than assuming that already happened.
+        if (content.isEmpty())
+            return false;
+        if (p.compiled_regex != null)
+            return p.compiled_regex.matcher(content).matches();
+        return true;
+    }
+
+    /** Finds where, if anywhere, [content] (the text right after a
+     "prefix" match, up to the cursor) splits into a part fully
+     matching "regex" (see [matches_keyword]) immediately followed by a
+     part fully matching [p]'s "suffix", with the split landing exactly
+     at the end of [content] (i.e. at the cursor). Tried longest-
+     keyword-first, so the shortest possible suffix wins if more than
+     one split would work. Returns the split index (the keyword's
+     length), or -1 if no valid split exists. [MAX_EXPAND_SUFFIX_CHARS]
+     bounds this to realistic suffix lengths rather than re-testing
+     "regex" against a shrinking prefix of [content] for its entire
+     (possibly thousands of characters) length on every keystroke. */
+    private int find_suffix_split(String content, TaskerAutomationConfig.ExpandPattern p)
+    {
+        int min_k = Math.max(0, content.length() - MAX_EXPAND_SUFFIX_CHARS);
+        for (int k = content.length(); k >= min_k; k--)
+        {
+            if (!p.compiled_suffix.matcher(content.substring(k)).matches())
+                continue;
+            if (!matches_keyword(content.substring(0, k), p))
+                continue;
+            return k;
+        }
+        return -1;
+    }
+
+    /** Fires [p.task] for one "amck_patterns" occurrence. For a
+     "fire_on_suffix": "true" entry this is a one-shot call - the only
+     one this occurrence will ever make. For a "false" entry it may be
+     called potentially many times for the very same occurrence, once
+     per qualifying keystroke (see [check_expand_patterns]), the LAST
+     of which has [suffix_match] non-null (a "true" entry's one and
+     only call always does, by definition). Nothing is deleted or
+     otherwise touched here - [prefix_match]+[keyword]+[suffix_match]
+     (as they are at THIS particular call) are left exactly as typed
+     in the field. Only if (and whenever) this specific call's reply
+     actually arrives with non-empty text does the callback below
+     touch the field at all - and even then, only if that span is
+     still sitting there untouched (see the
+     [current_text_before.startsWith] check): since several
+     overlapping calls can be in flight for the same "false"-entry
+     occurrence, whichever one's reply lands FIRST wins and mutates
+     the field; every other call's check then correctly fails (the
+     field it was expecting is gone, replaced by the winner's output)
+     and its reply is silently dropped, however much later it
+     eventually arrives.
+
+     [prefix_match] is the actual text "prefix" matched (often, but
+     not always, non-empty - e.g. "" for a zero-width "^" match).
+     [keyword] is the actual text "regex" (or, with none configured,
+     whatever non-empty in-between text) matched. [suffix_match] is
+     null on every "still live" call (nothing to send as %suffix yet,
+     and nothing but [keyword] is ever eligible to be replaced); once
+     "suffix" has matched, it's the actual text "suffix" matched -
+     sent as %suffix, and included (along with [keyword]) in whatever
+     gets replaced. [p.replace_prefix] additionally decides whether
+     [prefix_match] itself is ALSO part of what gets replaced, on top
+     of [keyword] (+ [suffix_match] if present) - see the class doc. */
+    private void fire_expand(final Context ctx, InputConnection conn,
+                             final KeymapEngine.WordTrackerCallback wt,
+                             final InputConnectionProvider late_conn_provider,
+                             final String text1, final String prefix_match, String keyword,
+                             final String suffix_match, final TaskerAutomationConfig.ExpandPattern p)
+    {
+        // Every fire clears any earlier one-shot undo, same reasoning
+        // as dictionary triggers - the user has moved on. Since a
+        // "fire_on_suffix": "false" occurrence fires many times, this
+        // simply runs again on every one of them.
         clear_undo();
 
-        // Captured now, before the async call - compared against
-        // [_session_id] when the result comes back so a field/app
-        // switch (or the keyboard closing) in the meantime can be
-        // detected and the result dropped instead of landing wherever
-        // is now focused. See [_session_id] and [fire], which this
-        // mirrors.
         final int session = _session_id;
+        // What's actually eligible to ever be replaced - [prefix_match]
+        // is tacked on the front only when [p.replace_prefix] says so;
+        // otherwise it's left out entirely; it's never touched at all
+        // either way (see [text1]/[expected_prefix] below, which always
+        // includes it regardless, since it's still sitting in the
+        // field either way - only whether it's part of the DELETE
+        // differs).
+        final String replaceable_span = (p.replace_prefix ? prefix_match : "") + keyword + (suffix_match != null ? suffix_match : "");
+        final String keyword_final = keyword;
 
         final int MAX_FIELD_CHARS = 20000;
-        final String text_before;
-        final String text_after;
+        final String text2;
         try
         {
-            CharSequence before = conn.getTextBeforeCursor(MAX_FIELD_CHARS, 0);
             CharSequence after = conn.getTextAfterCursor(MAX_FIELD_CHARS, 0);
-            text_before = (before != null) ? before.toString() : "";
-            text_after = (after != null) ? after.toString() : "";
+            text2 = (after != null) ? after.toString() : "";
         }
         catch (Exception e)
         {
@@ -767,46 +1007,7 @@ public class TaskerTriggerEngine
             return;
         }
 
-        // Defensive re-check: the field could in principle have
-        // changed between [check_expand_patterns]'s scan and here
-        // (both run synchronously back-to-back on the same thread, so
-        // in practice it can't, but never assume it silently still
-        // holds).
-        if (!text_before.endsWith(matched_span))
-            return;
-
-        final String text1 = text_before.substring(0, text_before.length() - matched_span.length());
-        final String text2 = text_after;
-        final String keyword = content;
-
-        try
-        {
-            _self_edit_count++;
-            conn.beginBatchEdit();
-            try
-            {
-                conn.deleteSurroundingText(matched_span.length(), 0);
-            }
-            finally
-            {
-                conn.endBatchEdit();
-            }
-        }
-        catch (Exception e)
-        {
-            Log.w(LOG_TAG, "deleting matched expand pattern failed, aborting", e);
-            return;
-        }
-        if (wt != null)
-            wt.remove_surrounding_text(matched_span.length(), 0);
-
-        // Expand patterns always behave like an "amck_append" trigger:
-        // only [matched_span] itself is ever touched - see the class
-        // doc.
-        final String undo_before = matched_span;
-        final String undo_after = "";
-
-        TaskerBridge.run_task(ctx, task_name, text1, text2, keyword, _config.timeout_ms,
+        TaskerBridge.run_task(ctx, p.task, text1, text2, prefix_match, keyword_final, suffix_match, _config.timeout_ms,
                 new TaskerBridge.ResultCallback()
                 {
                     public void result(String output, String error_message)
@@ -814,54 +1015,93 @@ public class TaskerTriggerEngine
                         if (session != _session_id)
                             return; // Field/app changed (or keyboard closed) while the task was running - see [_session_id].
 
+                        if (output == null || output.isEmpty())
+                        {
+                            // No usable reply for THIS call - timeout,
+                            // Tasker unreachable, or it just didn't send
+                            // a matching "text" extra. Nothing was ever
+                            // touched by this call (see this method's
+                            // doc), so there is nothing to restore -
+                            // leave the field exactly as it is; some
+                            // other in-flight call for this same
+                            // occurrence may still succeed later.
+                            if (error_message != null)
+                                android.widget.Toast.makeText(ctx, error_message, android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
                         InputConnection late_conn = late_conn_provider.get();
                         if (late_conn == null)
                             return; // No field focused at all right now - nothing safe to do.
 
-                        if (output == null)
+                        String current_text_before;
+                        try
                         {
-                            // Task never sent back a matching reply (timeout,
-                            // Tasker unreachable, or it just didn't include the
-                            // "text" extra) - [matched_span] was already
-                            // removed from the field before the task ran (see
-                            // above), so put it right back rather than leaving
-                            // the field with the keyword gone and nothing in
-                            // its place.
-                            if (error_message != null)
-                                android.widget.Toast.makeText(ctx, error_message, android.widget.Toast.LENGTH_SHORT).show();
-                            try
-                            {
-                                _self_edit_count++;
-                                late_conn.beginBatchEdit();
-                                try
-                                {
-                                    late_conn.commitText(matched_span, 1);
-                                }
-                                finally
-                                {
-                                    late_conn.endBatchEdit();
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                Log.w(LOG_TAG, "restoring original expand pattern text failed", e);
-                            }
-                            return; // Nothing was actually replaced - no undo to arm.
+                            CharSequence cur = late_conn.getTextBeforeCursor(MAX_FIELD_CHARS, 0);
+                            current_text_before = (cur != null) ? cur.toString() : "";
+                        }
+                        catch (Exception e)
+                        {
+                            Log.w(LOG_TAG, "reading field text failed, aborting expand pattern result", e);
+                            return;
                         }
 
-                        String text_to_insert = output;
+                        // Only apply if [text1]+[prefix_match]+[keyword]
+                        // (+[suffix_match], if this call had one) - this
+                        // particular call's span, exactly as it was
+                        // when THIS call started - is still sitting
+                        // there untouched. Whatever follows it now
+                        // (grown, shrunk, or even already past "suffix")
+                        // is [trailing], carried through untouched right
+                        // after the replacement. If some OTHER call for
+                        // this same occurrence already won this race and
+                        // mutated the field first, this check correctly
+                        // fails here and the reply is simply dropped -
+                        // see this method's doc.
+                        String matched_span = prefix_match + keyword_final + (suffix_match != null ? suffix_match : "");
+                        String expected_prefix = text1 + matched_span;
+                        if (!current_text_before.startsWith(expected_prefix))
+                            return;
+
+                        final String trailing = current_text_before.substring(expected_prefix.length());
+                        // Only [replaceable_span] (see this method's
+                        // doc - [keyword](+[suffix_match]), plus
+                        // [prefix_match] too if [p.replace_prefix]) is
+                        // ever deleted - when [p.replace_prefix] is
+                        // false, [prefix_match] sits between [text1] and
+                        // [replaceable_span] and is left completely
+                        // untouched, which is what stops a leading
+                        // separator like a space from being swallowed
+                        // along with the replacement.
+                        final int delete_len = replaceable_span.length() + trailing.length();
 
                         android.widget.Toast.makeText(ctx,
-                                "Tasker returned: \"" + text_to_insert + "\"",
+                                "Tasker returned: \"" + output + "\"",
                                 android.widget.Toast.LENGTH_SHORT).show();
 
                         try
                         {
-                            _self_edit_count++;
+                            // One credit per InputConnection call about
+                            // to be made below (delete, insert output,
+                            // optionally insert trailing) - see
+                            // [_self_edit_count].
+                            _self_edit_count += trailing.isEmpty() ? 2 : 3;
                             late_conn.beginBatchEdit();
                             try
                             {
-                                late_conn.commitText(text_to_insert, 1);
+                                late_conn.deleteSurroundingText(delete_len, 0);
+                                late_conn.commitText(output, 1);
+                                // newCursorPosition=0 here (not 1) is
+                                // deliberate: it leaves the cursor right
+                                // after [output], not at the very end
+                                // past [trailing], which is what lets an
+                                // immediate backspace undo just the
+                                // replacement itself (see [arm_undo]
+                                // below) even when the user kept typing
+                                // after this occurrence while the task
+                                // was running.
+                                if (!trailing.isEmpty())
+                                    late_conn.commitText(trailing, 0);
                             }
                             finally
                             {
@@ -874,23 +1114,35 @@ public class TaskerTriggerEngine
                             return;
                         }
 
-                        // The field's text before the cursor is now
-                        // text1+text_to_insert. Nothing at or before
-                        // that point may be treated as a fresh prefix
-                        // by a later [check_expand_patterns] scan - in
-                        // particular the just-inserted [text_to_insert]
-                        // itself, which may well contain characters
-                        // that look like a prefix/suffix (e.g. a
-                        // doMath task returning "8*3=24" for a "="/"\n"
-                        // pattern) but were never typed by the user.
-                        // See [_expand_no_match_before_len]. The value
-                        // being overwritten here is saved so undoing
-                        // this fire can put it back - see
-                        // [_undo_expand_prev_boundary].
-                        final int prev_boundary = _expand_no_match_before_len;
-                        _expand_no_match_before_len = text1.length() + text_to_insert.length();
+                        if (wt != null)
+                        {
+                            wt.remove_surrounding_text(delete_len, 0);
+                            wt.typed(trailing.isEmpty() ? output : output + trailing);
+                        }
 
-                        arm_undo(undo_before, undo_after, text_to_insert.length());
+                        // The field's text before the cursor is now
+                        // text1+prefix_match(if kept)+output. Nothing at
+                        // or before just-past-[output] may be treated as
+                        // a fresh "prefix" match by a later
+                        // [check_expand_patterns] scan - in particular
+                        // [output] itself, which may well contain
+                        // characters that look like a prefix/suffix
+                        // (e.g. a doMath task returning "8*3=24" for a
+                        // "="/"\n" pattern) but were never typed by the
+                        // user. See [_expand_no_match_before_len]. The
+                        // value being overwritten here is saved so
+                        // undoing this fire can put it back - see
+                        // [_undo_expand_prev_boundary].
+                        String text_before_output = text1 + (p.replace_prefix ? "" : prefix_match);
+                        final int prev_boundary = _expand_no_match_before_len;
+                        _expand_no_match_before_len = text_before_output.length() + output.length();
+
+                        // Only [replaceable_span] itself is ever touched
+                        // by the undo either - [trailing] (and, when
+                        // [p.replace_prefix] is false, [prefix_match])
+                        // sit right where they are throughout, untouched
+                        // by either this replacement or its undo.
+                        arm_undo(replaceable_span, "", output.length());
                         _undo_expand_prev_boundary = prev_boundary;
                     }
                 });
@@ -918,11 +1170,19 @@ public class TaskerTriggerEngine
         _undo_expand_prev_boundary = -1;
     }
 
+    /** Whether the selection change currently being reported to
+     [KeyEventHandler.selection_updated] should be treated as
+     self-inflicted. Consumes (decrements) one pending credit if any
+     are available - see [_self_edit_count] - rather than comparing
+     against a single "last seen" value, so a batch of several
+     InputConnection calls that ends up producing several separate
+     callbacks is still correctly recognised as self for every one of
+     them, not just the first. */
     public boolean consume_self_edit()
     {
-        if (_self_edit_count != _last_consumed_self_edit_count)
+        if (_self_edit_count > 0)
         {
-            _last_consumed_self_edit_count = _self_edit_count;
+            _self_edit_count--;
             return true;
         }
         return false;
@@ -931,7 +1191,7 @@ public class TaskerTriggerEngine
     public void reset()
     {
         _pending = "";
-        _last_consumed_self_edit_count = _self_edit_count;
+        _self_edit_count = 0;
         clear_undo();
     }
 }
