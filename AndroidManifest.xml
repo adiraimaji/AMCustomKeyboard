@@ -37,7 +37,8 @@
     <activity
         android:name=".KeymapBuilderActivity"
         android:label="@string/keymap_builder_activity_title"
-        android:windowSoftInputMode="adjustResize" />
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
     <activity
         android:name=".TaskerAutomationGuideActivity"
@@ -48,7 +49,8 @@
         android:name=".TaskerAutomationBuilderActivity"
         android:label="@string/tasker_builder_activity_title"
         android:theme="@style/settingsTheme"
-        android:windowSoftInputMode="adjustResize" />
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
     <!-- Serves the downloaded update APK (stored under this app's
          external-files "Download" dir - see UpdateInstaller) as a
