@@ -20,9 +20,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
  The Tasker task must be built to explicitly send this app a
  broadcast (Task > Send Intent) once it has a result, passing back
- the same %requestid this class hands it, so a reply can be matched
- to the call that produced it even if several calls are in flight
- at once. See the class-level setup notes below for the exact
+ the same %amck_requestid this class hands it, so a reply can be
+ matched to the call that produced it even if several calls are in
+ flight at once. See the class-level setup notes below for the exact
  Tasker action fields.
 
  Requires: the app declares
@@ -48,8 +48,12 @@ public final class TaskerBridge
     private static final String RESULT_ACTION_SUFFIX = ".TASKER_RESULT";
 
     /** Extra name (inside the Send Intent's "Extra" fields, as
-     "requestid:%requestid") the task must echo back so replies can
-     be matched to the call that produced them. */
+     "requestid:%amck_requestid") the task must echo back so replies
+     can be matched to the call that produced them. This is the
+     extra's KEY on the incoming reply broadcast, a fixed name of
+     this app's own choosing - unrelated to (and NOT renamed
+     alongside) the %amck_-prefixed local variable names below, which
+     is just the VALUE the task is told to put there. */
     private static final String EXTRA_REQUEST_ID = "requestid";
 
     /** Extra name (as "text:%hai" or similar, in Send Intent's
@@ -71,19 +75,23 @@ public final class TaskerBridge
     private TaskerBridge() {}
 
     /** Runs [task_name], passing in:
-      %text1     - the field's text before the matched trigger/pattern
-                   span, with that span itself removed (always set,
-                   possibly to an empty string)
-      %text2     - the field's text after the matched span - left
-                   UNSET (not merely empty) when there's nothing there,
-                   so Tasker's own "is set" checks work as expected
-      %keyword   - just the keyword/content itself, e.g. "one" for
-                   "##one"/"@@one", or the free-form text between an
-                   expand pattern's prefix and suffix - never the
-                   trigger/prefix/suffix symbols themselves
-      %requestid - a freshly generated correlation id, echoed back by
-                   the task's own "Send Intent" so the reply can be
-                   matched to this specific call
+      %amck_text1     - the field's text before the matched
+                        trigger/pattern span, with that span itself
+                        removed (always set, possibly to an empty
+                        string)
+      %amck_text2     - the field's text after the matched span -
+                        left UNSET (not merely empty) when there's
+                        nothing there, so Tasker's own "is set" checks
+                        work as expected
+      %amck_keyword   - just the keyword/content itself, e.g. "one"
+                        for "##one"/"@@one", or the free-form text
+                        between an expand pattern's prefix and suffix
+                        - never the trigger/prefix/suffix symbols
+                        themselves
+      %amck_requestid - a freshly generated correlation id, echoed
+                        back by the task's own "Send Intent" (under
+                        the fixed extra key [EXTRA_REQUEST_ID]) so the
+                        reply can be matched to this specific call
      then waits up to [timeout_ms] for that same task to send back a
      matching "Send Intent" broadcast, reporting its "text" extra
      asynchronously via [callback]. */
@@ -93,14 +101,14 @@ public final class TaskerBridge
     {
         ArrayList<String> var_names = new ArrayList<>();
         ArrayList<String> var_values = new ArrayList<>();
-        var_names.add("%text1");
+        var_names.add("%amck_text1");
         var_values.add(text1 != null ? text1 : "");
         if (text2 != null && !text2.isEmpty())
         {
-            var_names.add("%text2");
+            var_names.add("%amck_text2");
             var_values.add(text2);
         }
-        var_names.add("%keyword");
+        var_names.add("%amck_keyword");
         var_values.add(keyword != null ? keyword : "");
         run_task_internal(ctx, task_name, var_names, var_values, timeout_ms, callback);
     }
@@ -108,47 +116,66 @@ public final class TaskerBridge
     /** Same as the 5-var-name overload above, for "amck_patterns" -
      which additionally has a (regex-matched) [prefix] and, once the
      configured "suffix" regex has actually been matched, a [suffix] -
-     both passed the same "UNSET rather than empty" way as [text2]:
-      %prefix - the actual text the entry's "prefix" regex matched at
-                the start of this occurrence (e.g. a single space, or
-                empty for a zero-width match like "^") - left UNSET
-                only when [prefix] is null (an empty-but-real match,
-                e.g. "^", is still sent, as an empty string, since
-                "prefix matched" and "prefix wasn't configured" are
-                different things worth Tasker being able to tell
-                apart with an "is set" check)
-      %suffix - the actual text the entry's "suffix" regex matched,
-                only present at all on the one final call fired the
-                moment that match completes - left UNSET on every
-                earlier "still live" call for the same occurrence,
-                where the word isn't finished yet and there's nothing
-                to put here
+     both passed the same "UNSET rather than empty" way as
+     [text2]/%amck_text2:
+      %amck_prefix - the actual text the entry's "prefix" regex
+                     matched at the start of this occurrence (e.g. a
+                     single space, or empty for a zero-width match
+                     like "^") - left UNSET only when [prefix] is null
+                     (an empty-but-real match, e.g. "^", is still
+                     sent, as an empty string, since "prefix matched"
+                     and "prefix wasn't configured" are different
+                     things worth Tasker being able to tell apart with
+                     an "is set" check)
+      %amck_suffix - the actual text the entry's "suffix" regex
+                     matched, only present at all on the one final
+                     call fired the moment that match completes - left
+                     UNSET on every earlier "still live" call for the
+                     same occurrence, where the word isn't finished
+                     yet and there's nothing to put here
+      %amck_keyword_stop - only present (as "true") on the one call
+                     fired the instant a "fire_on_suffix": "false"
+                     entry's in-between text, having matched "regex"
+                     at least once, stops matching it again - before
+                     "suffix" has been reached at all. Left UNSET on
+                     every other call (including the "suffix" one
+                     above), so a Tasker task can tell "the word I was
+                     tracking no longer looks valid - e.g. dismiss any
+                     popup you showed" apart from every other reason
+                     this task might run. See [keyword_stop].
      [keyword] here is always just the in-between content the entry's
-     own "regex" matched - never [prefix] or [suffix]. */
+     own "regex" matched (or, when [keyword_stop] is true, whatever
+     content most recently failed to match it) - never [prefix] or
+     [suffix]. */
     public static void run_task(final Context ctx, String task_name,
                                 String text1, String text2, String prefix, String keyword, String suffix,
-                                long timeout_ms, final ResultCallback callback)
+                                boolean keyword_stop, long timeout_ms, final ResultCallback callback)
     {
         ArrayList<String> var_names = new ArrayList<>();
         ArrayList<String> var_values = new ArrayList<>();
-        var_names.add("%text1");
+        var_names.add("%amck_text1");
         var_values.add(text1 != null ? text1 : "");
         if (text2 != null && !text2.isEmpty())
         {
-            var_names.add("%text2");
+            var_names.add("%amck_text2");
             var_values.add(text2);
         }
         if (prefix != null)
         {
-            var_names.add("%prefix");
+            var_names.add("%amck_prefix");
             var_values.add(prefix);
         }
-        var_names.add("%keyword");
+        var_names.add("%amck_keyword");
         var_values.add(keyword != null ? keyword : "");
         if (suffix != null)
         {
-            var_names.add("%suffix");
+            var_names.add("%amck_suffix");
             var_values.add(suffix);
+        }
+        if (keyword_stop)
+        {
+            var_names.add("%amck_keyword_stop");
+            var_values.add("true");
         }
         run_task_internal(ctx, task_name, var_names, var_values, timeout_ms, callback);
     }
@@ -163,7 +190,7 @@ public final class TaskerBridge
         Intent request = new Intent(ACTION_TASK);
         request.putExtra(EXTRA_TASK_NAME, task_name);
 
-        var_names.add("%requestid");
+        var_names.add("%amck_requestid");
         var_values.add(request_id);
         request.putStringArrayListExtra(EXTRA_VAR_NAMES_LIST, var_names);
         request.putStringArrayListExtra(EXTRA_VAR_VALUES_LIST, var_values);

@@ -17,8 +17,8 @@ import java.util.regex.PatternSyntaxException;
  "runtask1": "Task 1",     // any other key -> a Tasker task NAME
  "runtask2": "Task 2",
  "amck_patterns": [ // optional - see [ExpandPattern]
- { "prefix": "\\.\\.", "suffix": " ", "replace_prefix": "true", "fire_on_suffix": "true", "task": "Expand Task 1" },
- { "prefix": "(\\s|^)", "regex": "x.{2,}", "suffix": " ", "replace_prefix": "false", "fire_on_suffix": "false", "task": "TextExpander" }
+ { "name": "Calculator", "prefix": "\\.\\.", "suffix": " ", "replace_prefix": "true", "fire_on_suffix": "true", "task": "Expand Task 1" },
+ { "prefix": "(\\s|^)", "regex": "x.{2,}", "suffix": " ", "replace_prefix": "false", "fire_on_suffix": "false", "task": "TextExpander" } // "name" optional, unnamed here
  ]
  }
 
@@ -41,27 +41,46 @@ import java.util.regex.PatternSyntaxException;
  "regex" (or, if "regex" is omitted, just any non-empty part)
  followed immediately by a part fully matching "suffix" - the split
  landing exactly at the cursor - [task] is fired for this occurrence,
- with %prefix, %keyword (just the "regex" part) AND %suffix all sent.
- This occurrence is then CLOSED: no further keystroke will ever fire
- it again, unless the user backspaces back into (or past) either the
- %keyword or %suffix span, which reopens it - see
- [TaskerTriggerEngine.check_expand_patterns]'s "closed" tracking.
+ with %amck_prefix, %amck_keyword (just the "regex" part) AND
+ %amck_suffix all sent. This occurrence is then CLOSED: no further
+ keystroke will ever fire it again, unless the user backspaces back
+ into (or past) either the %amck_keyword or %amck_suffix span, which
+ reopens it - see [TaskerTriggerEngine.check_expand_patterns]'s
+ "closed" tracking.
  - Otherwise, if "fire_on_suffix" is "false" and the WHOLE in-between
  text (with no "suffix" yet) fully matches "regex" (or is just
- non-empty, if "regex" is omitted), [task] fires again - %prefix and
- %keyword sent, %suffix left UNSET - and keeps firing again on every
- subsequent qualifying keystroke (typed forward or backspace) for as
- long as that stays true. If "fire_on_suffix" is "true", this
- in-between-only case never fires at all - [task] only ever runs once
- "suffix" itself is matched, same as the very first bullet above.
- - Otherwise (too little typed yet, or content no longer matches),
+ non-empty, if "regex" is omitted), [task] fires again - %amck_prefix
+ and %amck_keyword sent, %amck_suffix left UNSET - and keeps firing
+ again on every subsequent qualifying keystroke (typed forward or
+ backspace) for as long as that stays true. If "fire_on_suffix" is
+ "true", this in-between-only case never fires at all - [task] only
+ ever runs once "suffix" itself is matched, same as the very first
+ bullet above.
+ - Otherwise, if "fire_on_suffix" is "false" and the in-between text
+ USED to fully match "regex" (on some earlier keystroke) but no longer
+ does, and "suffix" still hasn't matched either, [task] fires ONE MORE
+ TIME with %amck_keyword_stop="true" added (and %amck_suffix still
+ UNSET) - purely so it can react to the match having broken (e.g.
+ dismiss a popup it showed) - then goes quiet again: no further fire
+ for this same "stopped matching" streak, until "regex" matches again
+ (a further failure after that CAN fire this once more). If
+ "fire_on_suffix" is "true", there's no "used to match" state to break
+ out of in the first place, so this never applies. A newline anywhere
+ in the in-between text counts as "no longer matches" for this
+ purpose too (a match, live or final, can never span a newline) - so
+ pressing Enter right after a live match has the same effect as
+ backspacing it down to nothing: it fires this same one-off
+ %amck_keyword_stop="true" call, with %amck_keyword set to whatever
+ was typed before the newline.
+ - Otherwise (too little typed yet, or content never matched at all),
  nothing happens - the check simply runs again on the next keystroke.
 
  So "fire_on_suffix": "true" makes an entry behave like a one-shot
  calculation (e.g. "..5+1 " -> a doMath task, nothing runs until the
  whole "..5+1 " is typed) while "fire_on_suffix": "false" makes it a
  continuous live-suggestion trigger (e.g. a text-expander popup that
- updates as you type) that ALSO still fires one final time the moment
+ updates as you type, and is told via %amck_keyword_stop when to
+ dismiss itself) that ALSO still fires one final time the moment
  "suffix" completes. Both are otherwise identical in every other
  respect - same regex-based prefix/suffix, same "replace_prefix", same
  field-editing behaviour once a reply lands.
@@ -69,12 +88,13 @@ import java.util.regex.PatternSyntaxException;
  None of these calls touch the field themselves while they're
  running - seeing [task] fire at all is purely a "Running ..." toast
  (for a "fire_on_suffix": "false" entry, shown once when a fresh
- occurrence starts being live, not on every repeat; always shown for
- the one call a "fire_on_suffix": "true" entry ever makes) - unless
- and until one of them actually replies with non-empty text, at which
- point that reply replaces the matched span: %keyword's span, plus
- %suffix's span if this was a call where "suffix" had matched - PLUS
- %prefix's span too, but ONLY if "replace_prefix" is "true". With
+ occurrence starts being live, not on every repeat, and not for its
+ %amck_keyword_stop call either; always shown for the one call a
+ "fire_on_suffix": "true" entry ever makes) - unless and until one of
+ them actually replies with non-empty text, at which point that reply
+ replaces the matched span: %amck_keyword's span, plus %amck_suffix's
+ span if this was a call where "suffix" had matched - PLUS
+ %amck_prefix's span too, but ONLY if "replace_prefix" is "true". With
  "replace_prefix": "false", the text "prefix" matched is left
  completely untouched in the field, immediately before wherever the
  replacement lands - this is what stops a leading separator like a
@@ -140,6 +160,7 @@ public final class TaskerAutomationConfig
      is a regex matching the literal 2 characters ".." (the dots are
      escaped since "prefix" is a regex now, and a bare "." would
      instead match any single character). */
+    public static final String DEFAULT_EXPAND_PATTERN_NAME = "Classic calculation";
     public static final String DEFAULT_EXPAND_PATTERN_PREFIX = "\\.\\.";
     public static final String DEFAULT_EXPAND_PATTERN_SUFFIX = " ";
     public static final String DEFAULT_EXPAND_PATTERN_TASK = "ReplaceYourTaskName";
@@ -151,6 +172,7 @@ public final class TaskerAutomationConfig
      "fire_on_suffix": "false" (continuous, live-suggestion-style)
      entry. Rename the task in-place to whichever Tasker task you want
      it to run. */
+    public static final String DEFAULT_LIVE_PATTERN_NAME = "Live text expander";
     public static final String DEFAULT_LIVE_PATTERN_PREFIX = "(\\s|^)";
     public static final String DEFAULT_LIVE_PATTERN_REGEX = "x.{2,}";
     public static final String DEFAULT_LIVE_PATTERN_SUFFIX = " ";
@@ -161,8 +183,15 @@ public final class TaskerAutomationConfig
     /** One "amck_patterns" entry. [prefix], [suffix], [task],
      [replace_prefix_str] and [fire_on_suffix_str] are required
      (non-empty, except the two booleans just need to be present and
-     valid); [regex] is optional - null (or, equivalently, empty)
-     means "any non-empty in-between text matches". [prefix], [regex]
+     valid); [regex] and [name] are both optional - null (or,
+     equivalently, empty) means "any non-empty in-between text
+     matches" for [regex], and "unnamed" for [name]. [name] is purely
+     a user-facing label (shown in the Automation Builder so someone
+     can tell their patterns apart at a glance) - it's never sent to
+     Tasker and never affects matching in any way; added purely so
+     upgrading doesn't require touching any existing config, every
+     entry that predates this field simply parses with [name] null,
+     same as one that leaves it out on purpose. [prefix], [regex]
      (when present) and [suffix] are all regex source strings, each
      with its own pre-compiled (MULTILINE) [Pattern] - compiled once
      here rather than in the hot
@@ -173,6 +202,7 @@ public final class TaskerAutomationConfig
      user typed rather than normalizing it to "true"/"false"). */
     public static final class ExpandPattern
     {
+        public final String name;
         public final String prefix;
         public final Pattern compiled_prefix;
         public final String regex;
@@ -185,11 +215,12 @@ public final class TaskerAutomationConfig
         public final String fire_on_suffix_str;
         public final boolean fire_on_suffix;
 
-        public ExpandPattern(String prefix_, Pattern compiled_prefix_, String regex_, Pattern compiled_regex_,
+        public ExpandPattern(String name_, String prefix_, Pattern compiled_prefix_, String regex_, Pattern compiled_regex_,
                              String suffix_, Pattern compiled_suffix_, String task_,
                              String replace_prefix_str_, boolean replace_prefix_,
                              String fire_on_suffix_str_, boolean fire_on_suffix_)
         {
+            name = name_;
             prefix = prefix_;
             compiled_prefix = compiled_prefix_;
             regex = regex_;
@@ -320,12 +351,14 @@ public final class TaskerAutomationConfig
         LinkedHashSet<String> seen_pattern_keys = new LinkedHashSet<>();
         for (List<Map.Entry<String, String>> obj : mixed.array_objects(KEY_EXPAND_PATTERNS))
         {
-            String prefix = null, regex = null, suffix = null, task = null;
+            String name = null, prefix = null, regex = null, suffix = null, task = null;
             String replace_prefix_str = null, fire_on_suffix_str = null;
             for (Map.Entry<String, String> e : obj)
             {
                 String key = e.getKey();
-                if (key.equals("prefix"))
+                if (key.equals("name"))
+                    name = e.getValue();
+                else if (key.equals("prefix"))
                     prefix = e.getValue();
                 else if (key.equals(KEY_EXPAND_PATTERN_REGEX))
                     regex = e.getValue();
@@ -340,7 +373,7 @@ public final class TaskerAutomationConfig
                 else
                     throw new KeymapJsonUtils.ParseError(
                             "Unknown key \"" + key + "\" in \"" + KEY_EXPAND_PATTERNS
-                                    + "\" entry (expected \"prefix\", \"" + KEY_EXPAND_PATTERN_REGEX
+                                    + "\" entry (expected \"name\" (optional), \"prefix\", \"" + KEY_EXPAND_PATTERN_REGEX
                                     + "\" (optional), \"suffix\", \"task\", \"replace_prefix\", \"fire_on_suffix\")");
             }
             if (prefix == null || prefix.isEmpty())
@@ -355,6 +388,8 @@ public final class TaskerAutomationConfig
                 throw new KeymapJsonUtils.ParseError("Each \"" + KEY_EXPAND_PATTERNS + "\" entry needs a \"fire_on_suffix\" (\"true\" or \"false\")");
             if (regex != null && regex.isEmpty())
                 regex = null; // Empty "regex" is the same as omitting it entirely.
+            if (name != null && name.isEmpty())
+                name = null; // Empty "name" is the same as omitting it entirely - unnamed.
 
             boolean replace_prefix = parse_bool_field(prefix, "replace_prefix", replace_prefix_str);
             boolean fire_on_suffix = parse_bool_field(prefix, "fire_on_suffix", fire_on_suffix_str);
@@ -368,7 +403,7 @@ public final class TaskerAutomationConfig
                 throw new KeymapJsonUtils.ParseError(
                         "Duplicate \"" + KEY_EXPAND_PATTERNS + "\" entry: prefix \"" + prefix + "\" with suffix \"" + suffix + "\"");
 
-            expand_patterns.add(new ExpandPattern(prefix, compiled_prefix, regex, compiled_regex, suffix, compiled_suffix,
+            expand_patterns.add(new ExpandPattern(name, prefix, compiled_prefix, regex, compiled_regex, suffix, compiled_suffix,
                     task, replace_prefix_str, replace_prefix, fire_on_suffix_str, fire_on_suffix));
         }
 
@@ -376,6 +411,7 @@ public final class TaskerAutomationConfig
         if (expand_patterns.isEmpty())
         {
             expand_patterns.add(new ExpandPattern(
+                    DEFAULT_EXPAND_PATTERN_NAME,
                     DEFAULT_EXPAND_PATTERN_PREFIX, compile_pattern_field_regex("prefix", DEFAULT_EXPAND_PATTERN_PREFIX),
                     null, null,
                     DEFAULT_EXPAND_PATTERN_SUFFIX, compile_pattern_field_regex("suffix", DEFAULT_EXPAND_PATTERN_SUFFIX),
@@ -383,6 +419,7 @@ public final class TaskerAutomationConfig
                     DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX, Boolean.parseBoolean(DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX),
                     DEFAULT_EXPAND_PATTERN_FIRE_ON_SUFFIX, Boolean.parseBoolean(DEFAULT_EXPAND_PATTERN_FIRE_ON_SUFFIX)));
             expand_patterns.add(new ExpandPattern(
+                    DEFAULT_LIVE_PATTERN_NAME,
                     DEFAULT_LIVE_PATTERN_PREFIX, compile_pattern_field_regex("prefix", DEFAULT_LIVE_PATTERN_PREFIX),
                     DEFAULT_LIVE_PATTERN_REGEX, compile_pattern_field_regex(KEY_EXPAND_PATTERN_REGEX, DEFAULT_LIVE_PATTERN_REGEX),
                     DEFAULT_LIVE_PATTERN_SUFFIX, compile_pattern_field_regex("suffix", DEFAULT_LIVE_PATTERN_SUFFIX),
@@ -456,6 +493,8 @@ public final class TaskerAutomationConfig
         {
             ExpandPattern p = expand_patterns.get(i);
             sb.append("    {\n");
+            if (p.name != null)
+                sb.append("      \"name\": \"").append(escape_json(p.name)).append("\",\n");
             sb.append("      \"prefix\": \"").append(escape_json(p.prefix)).append("\",\n");
             if (p.regex != null)
                 sb.append("      \"").append(KEY_EXPAND_PATTERN_REGEX).append("\": \"").append(escape_json(p.regex)).append("\",\n");

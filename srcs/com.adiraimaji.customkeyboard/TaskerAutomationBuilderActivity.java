@@ -14,6 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.google.android.material.appbar.MaterialToolbar;
@@ -42,11 +43,16 @@ import java.util.Map;
  (the "runtask1": "Task 1" style entries used with the amck_replace/
  amck_append triggers above).
  - A dynamically-growing list of "amck_patterns" entries, each its
- own card with prefix/optional regex/suffix/task (all regexes except
- task) stacked, plus two checkboxes - "replace_prefix" and
- "fire_on_suffix" - stacked rather than side-by-side since that many
- inputs would be unreadably cramped on a phone-width row, unlike the
- 2-field keyword/task rows above.
+ own collapsible card: a header (always visible - a number badge, the
+ optional "name" field, and a delete button, confirmed before it
+ actually removes anything) plus a body (prefix/optional regex/
+ suffix/task, all regexes except task, plus two checkboxes -
+ "replace_prefix" and "fire_on_suffix" - stacked rather than
+ side-by-side since that many inputs would be unreadably cramped on a
+ phone-width row) that only shows when the card is expanded. Cards
+ loaded from an existing config start collapsed; one just added via
+ "+ Add expand pattern" starts expanded, since there's nothing in it
+ yet to hide.
 
  On Save, the form is serialized to the same JSON shape
  [TaskerAutomationConfig.parse] expects and validated with that same
@@ -83,9 +89,19 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
         }
     }
 
+    /** [name] is the user-facing label shown in the card's header
+     (see [add_pattern_row]) - purely organizational, never sent to
+     Tasker, and optional (an empty field means "unnamed", same as the
+     "name" JSON key being entirely absent). [body] is the collapsible
+     container holding every field below the header (prefix through
+     the two checkboxes) - [chevron] toggles its visibility; see
+     [add_pattern_row]'s expand/collapse handling. */
     private static final class PatternRow
     {
         final LinearLayout layout;
+        final EditText name;
+        final View body;
+        final TextView chevron;
         final EditText prefix;
         final EditText regex;
         final EditText suffix;
@@ -94,10 +110,14 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
         final CheckBox fire_on_suffix;
         final TextView badge;
 
-        PatternRow(LinearLayout layout_, EditText prefix_, EditText regex_, EditText suffix_, EditText task_,
+        PatternRow(LinearLayout layout_, EditText name_, View body_, TextView chevron_,
+                  EditText prefix_, EditText regex_, EditText suffix_, EditText task_,
                   CheckBox replace_prefix_, CheckBox fire_on_suffix_, TextView badge_)
         {
             layout = layout_;
+            name = name_;
+            body = body_;
+            chevron = chevron_;
             prefix = prefix_;
             regex = regex_;
             suffix = suffix_;
@@ -135,7 +155,7 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
         load_existing_or_defaults();
 
         findViewById(R.id.tab_add_task_button).setOnClickListener(v -> add_task_row("", ""));
-        findViewById(R.id.tab_add_pattern_button).setOnClickListener(v -> add_pattern_row("", "", "", "", true, true));
+        findViewById(R.id.tab_add_pattern_button).setOnClickListener(v -> add_pattern_row("", "", "", "", "", true, true, true));
         findViewById(R.id.tab_save_button).setOnClickListener(v -> save());
     }
 
@@ -165,8 +185,9 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
             for (Map.Entry<String, String> e : config.tasks.entrySet())
                 add_task_row(display_form(e.getKey()), display_form(e.getValue()));
             for (TaskerAutomationConfig.ExpandPattern p : config.expand_patterns)
-                add_pattern_row(display_form(p.prefix), p.regex == null ? "" : display_form(p.regex),
-                        display_form(p.suffix), display_form(p.task), p.replace_prefix, p.fire_on_suffix);
+                add_pattern_row(p.name == null ? "" : display_form(p.name),
+                        display_form(p.prefix), p.regex == null ? "" : display_form(p.regex),
+                        display_form(p.suffix), display_form(p.task), p.replace_prefix, p.fire_on_suffix, false);
         }
         else
         {
@@ -174,14 +195,16 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
             _append_input.setText(TaskerAutomationConfig.DEFAULT_APPEND_TRIGGER);
             _timeout_input.setText(String.valueOf(TaskerAutomationConfig.DEFAULT_TIMEOUT_MS));
             add_task_row("runtask1", "Task 1");
-            add_pattern_row(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX, "",
+            add_pattern_row(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_NAME,
+                    TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX, "",
                     TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX, TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_TASK,
                     Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX),
-                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_FIRE_ON_SUFFIX));
-            add_pattern_row(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_PREFIX, TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REGEX,
+                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_FIRE_ON_SUFFIX), false);
+            add_pattern_row(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_NAME,
+                    TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_PREFIX, TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REGEX,
                     TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_SUFFIX, TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_TASK,
                     Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REPLACE_PREFIX),
-                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_FIRE_ON_SUFFIX));
+                    Boolean.parseBoolean(TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_FIRE_ON_SUFFIX), false);
         }
 
         if (_task_rows.isEmpty())
@@ -286,8 +309,8 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
             _task_rows.get(i).badge.setText(String.valueOf(i + 1));
     }
 
-    private PatternRow add_pattern_row(String prefix, String regex, String suffix, String task,
-                                       boolean replace_prefix, boolean fire_on_suffix)
+    private PatternRow add_pattern_row(String name, String prefix, String regex, String suffix, String task,
+                                       boolean replace_prefix, boolean fire_on_suffix, boolean expanded)
     {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -298,44 +321,152 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         card_lp.topMargin = dp(10);
 
+        // Header: always visible, whether the card is expanded or
+        // collapsed - [make_index_badge]'s number, the "name" field
+        // (see [make_pattern_name_input] - this IS the "name" input
+        // itself, not just a read-only display of it, so it's usable
+        // without ever expanding the card), and the delete button.
+        // The chevron is purely a visual "tap to expand" affordance -
+        // the whole row (everything except the name field and delete
+        // button, which need their own touch handling) toggles
+        // [body]'s visibility, via [header_row]'s own click listener
+        // below, set up once [pattern_row] exists to reference.
         LinearLayout header_row = new LinearLayout(this);
         header_row.setOrientation(LinearLayout.HORIZONTAL);
         header_row.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView chevron = make_chevron(expanded);
+        LinearLayout.LayoutParams chevron_lp = new LinearLayout.LayoutParams(dp(20), dp(20));
+        chevron_lp.setMarginEnd(dp(6));
+        header_row.addView(chevron, chevron_lp);
+
         TextView badge = make_index_badge();
-        header_row.addView(badge, new LinearLayout.LayoutParams(dp(22), dp(22)));
-        LinearLayout.LayoutParams spacer_lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        header_row.addView(new View(this), spacer_lp);
+        LinearLayout.LayoutParams badge_lp = new LinearLayout.LayoutParams(dp(22), dp(22));
+        badge_lp.setMarginEnd(dp(8));
+        header_row.addView(badge, badge_lp);
+
+        EditText name_input = make_pattern_name_input(name);
+        LinearLayout.LayoutParams name_lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        name_lp.setMarginEnd(dp(6));
+        header_row.addView(name_input, name_lp);
+
         ImageButton remove = make_remove_button();
         header_row.addView(remove, new LinearLayout.LayoutParams(dp(28), dp(28)));
         card.addView(header_row);
 
-        EditText prefix_input = add_pattern_field(card, R.string.tasker_builder_pattern_prefix_label,
+        // Everything below the header - collapsed (GONE) by default
+        // for a pattern loaded from an existing config, expanded for
+        // one just added via "+ Add expand pattern" (so there's
+        // something to immediately fill in without an extra tap) -
+        // see [expanded].
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        card.addView(body, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        EditText prefix_input = add_pattern_field(body, R.string.tasker_builder_pattern_prefix_label,
                 R.string.tasker_builder_pattern_prefix_hint, prefix);
-        EditText regex_input = add_pattern_field(card, R.string.tasker_builder_pattern_regex_label,
+        EditText regex_input = add_pattern_field(body, R.string.tasker_builder_pattern_regex_label,
                 R.string.tasker_builder_pattern_regex_hint, regex);
-        EditText suffix_input = add_pattern_field(card, R.string.tasker_builder_pattern_suffix_label,
+        EditText suffix_input = add_pattern_field(body, R.string.tasker_builder_pattern_suffix_label,
                 R.string.tasker_builder_pattern_suffix_hint, suffix);
-        EditText task_input = add_pattern_field(card, R.string.tasker_builder_pattern_task_label,
+        EditText task_input = add_pattern_field(body, R.string.tasker_builder_pattern_task_label,
                 R.string.tasker_builder_pattern_task_hint, task);
-        CheckBox replace_prefix_input = add_pattern_checkbox(card,
+        CheckBox replace_prefix_input = add_pattern_checkbox(body,
                 R.string.tasker_builder_pattern_replace_prefix_label, replace_prefix);
-        CheckBox fire_on_suffix_input = add_pattern_checkbox(card,
+        CheckBox fire_on_suffix_input = add_pattern_checkbox(body,
                 R.string.tasker_builder_pattern_fire_on_suffix_label, fire_on_suffix);
 
-        final PatternRow pattern_row = new PatternRow(card, prefix_input, regex_input, suffix_input, task_input,
+        final PatternRow pattern_row = new PatternRow(card, name_input, body, chevron,
+                prefix_input, regex_input, suffix_input, task_input,
                 replace_prefix_input, fire_on_suffix_input, badge);
         _pattern_rows.add(pattern_row);
         _patterns_container.addView(card, card_lp);
         refresh_pattern_indices();
 
-        remove.setOnClickListener(v ->
-        {
-            _pattern_rows.remove(pattern_row);
-            _patterns_container.removeView(card);
-            refresh_pattern_indices();
-        });
+        header_row.setOnClickListener(v -> toggle_pattern_expanded(pattern_row));
+        remove.setOnClickListener(v -> confirm_and_remove_pattern(pattern_row, card));
 
         return pattern_row;
+    }
+
+    /** Flips one pattern card between expanded and collapsed - see
+     [add_pattern_row]'s header/body split. Reads the current state
+     directly off [PatternRow.body]'s own visibility rather than
+     tracking a separate boolean, since the view IS the state here. */
+    private void toggle_pattern_expanded(PatternRow row)
+    {
+        boolean now_expanded = row.body.getVisibility() != View.VISIBLE;
+        row.body.setVisibility(now_expanded ? View.VISIBLE : View.GONE);
+        row.chevron.setText(now_expanded ? "\u25be" : "\u25b8");
+        row.chevron.setContentDescription(getString(
+                now_expanded ? R.string.tasker_builder_collapse_pattern : R.string.tasker_builder_expand_pattern));
+    }
+
+    /** Confirms before actually deleting a pattern card - unlike a
+     keyword row (which stays a quick, no-confirmation ✕, same as
+     before), a pattern card can hold a fair amount of typed-in
+     configuration, so an accidental tap here is more costly. Names
+     the pattern in the confirmation message when it has one. */
+    private void confirm_and_remove_pattern(final PatternRow row, final LinearLayout card)
+    {
+        String name = text_of(row.name).trim();
+        String message = name.isEmpty()
+                ? getString(R.string.tasker_builder_delete_pattern_message_unnamed)
+                : getString(R.string.tasker_builder_delete_pattern_message_named, name);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.tasker_builder_delete_pattern_title)
+                .setMessage(message)
+                .setPositiveButton(R.string.tasker_builder_delete, (dialog, which) ->
+                {
+                    _pattern_rows.remove(row);
+                    _patterns_container.removeView(card);
+                    refresh_pattern_indices();
+                })
+                .setNegativeButton(R.string.tasker_builder_cancel, null)
+                .show();
+    }
+
+    /** The small "▸"/"▾" tap-to-expand indicator at the start of a
+     pattern card's header - purely visual (see [add_pattern_row]:
+     the actual toggle is wired on the whole header row, not this
+     view specifically), kept as its own [TextView] so
+     [toggle_pattern_expanded] has something to update the glyph and
+     content description on. */
+    private TextView make_chevron(boolean expanded)
+    {
+        TextView chevron = new TextView(this);
+        chevron.setText(expanded ? "\u25be" : "\u25b8");
+        chevron.setTextColor(ContextCompat.getColor(this, R.color.settings_on_surface_variant));
+        chevron.setTextSize(16f);
+        chevron.setGravity(Gravity.CENTER);
+        chevron.setContentDescription(getString(
+                expanded ? R.string.tasker_builder_collapse_pattern : R.string.tasker_builder_expand_pattern));
+        return chevron;
+    }
+
+    /** The pattern card's "name" field, living directly in the header
+     (see [add_pattern_row]) rather than down in the collapsible body
+     like every other field - it's the one field that's actually
+     useful to see/edit without ever expanding the card, since its
+     whole purpose is telling collapsed patterns apart at a glance.
+     Styled to read as a title (bold, no input-box background) rather
+     than another boxed text field, unlike [add_pattern_field]'s
+     inputs and unlike [style_edit_text]. */
+    private EditText make_pattern_name_input(String initial_value)
+    {
+        EditText et = new EditText(this);
+        et.setHint(R.string.tasker_builder_pattern_name_hint);
+        et.setSingleLine(true);
+        et.setText(initial_value);
+        et.setTextColor(Color.rgb(23, 32, 42));
+        et.setHintTextColor(Color.rgb(152, 162, 171));
+        et.setTextSize(14f);
+        et.setTypeface(null, android.graphics.Typeface.BOLD);
+        et.setBackground(null);
+        et.setPadding(dp(4), dp(2), dp(4), dp(2));
+        return et;
     }
 
     private EditText add_pattern_field(LinearLayout parent, int label_res, int hint_res, String initial_value)
@@ -506,14 +637,17 @@ public class TaskerAutomationBuilderActivity extends AppCompatActivity
         for (int i = 0; i < _pattern_rows.size(); i++)
         {
             PatternRow row = _pattern_rows.get(i);
+            String name = text_of(row.name);
             String prefix = text_of(row.prefix);
             String regex = text_of(row.regex);
             String suffix = text_of(row.suffix);
             String task = text_of(row.task);
-            if (prefix.isEmpty() && regex.isEmpty() && suffix.isEmpty() && task.isEmpty())
+            if (name.isEmpty() && prefix.isEmpty() && regex.isEmpty() && suffix.isEmpty() && task.isEmpty())
                 continue;
 
             StringBuilder obj = new StringBuilder("    {\n");
+            if (!name.isEmpty())
+                obj.append("      ").append(json_line("name", name)).append(",\n");
             obj.append("      ").append(json_line("prefix", prefix)).append(",\n");
             if (!regex.isEmpty())
                 obj.append("      ").append(json_line(TaskerAutomationConfig.KEY_EXPAND_PATTERN_REGEX, regex)).append(",\n");

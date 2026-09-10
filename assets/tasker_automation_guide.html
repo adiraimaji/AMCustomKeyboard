@@ -182,6 +182,7 @@
         <li>If you skip step 2: every trigger will still "fire" (the trigger text disappears), but you'll get a toast saying Tasker couldn't be reached, and nothing useful will be inserted.</li>
     </ul>
     <div class="desc">Need ready-made example tasks instead of building one from scratch? Open <code>Settings &#8594; Tasker Automation &#8594; Get AM Tasker Plugins</code> for a small collection of starter tasks and plugin actions you can import - including the "AM Custom Keyboard Return" plugin covered under <a href="#task">Building the Tasker task</a> below.</div>
+    <div class="default-chip" style="display:block; margin-top:12px; background:#fff8e1; color:#8a6d00;">Using the "AM Custom Keyboard Return" plugin action? Every variable this app hands a task is now prefixed <code>amck_</code> (<code>%text1</code> &#8594; <code>%amck_text1</code>, and so on - see Variables reference below), so you'll need <b>AM Tasker Plugins v1.1.0 or later</b> for its "requestid" wiring to line up. Tasks built entirely by hand (Method 1 below) just need to reference the new variable names directly - no plugin version to worry about.</div>
 </div>
 
 <div id="config" class="card">
@@ -288,14 +289,15 @@
 <div id="expand" class="card">
     <div class="section-title">.. expand patterns</div>
     <div class="desc">Replace/append triggers only work with a fixed list of keywords you typed out in the config. Expand patterns are different: they work with <b>any</b> free-form text you type between a <code>prefix</code> and a <code>suffix</code> - nothing to pre-register.</div>
-    <div class="desc">Type <code>prefix</code>, then anything (at least one character), then <code>suffix</code>. As soon as the suffix completes, the text in between is sent to the task as <code>%keyword</code>, and the whole <code>prefix + content + suffix</code> span is swapped for the task's reply - same "insert in place" behaviour as an <code>@@</code> trigger.</div>
+    <div class="desc">Type <code>prefix</code>, then anything (at least one character), then <code>suffix</code>. As soon as the suffix completes, the text in between is sent to the task as <code>%amck_keyword</code>, and the whole <code>prefix + content + suffix</code> span is swapped for the task's reply - same "insert in place" behaviour as an <code>@@</code> trigger.</div>
     <div class="example-block">
         <div class="example-row"><div class="example-label">Config</div><div class="example-value">{ "prefix": "..", "suffix": " ", "task": "Calculator" }</div></div>
         <div class="example-row"><div class="example-label">You type</div><div class="example-value">Total: ..12*3.5 </div></div>
         <div class="example-output-header">Output (the moment the trailing space is typed)</div>
         <div class="example-row"><div class="example-value">Total: 42</div></div>
     </div>
-    <div class="desc">Here <code>%keyword</code> received by the task is <code>12*3.5</code> - the task just needs a "Variable Set" action doing the arithmetic and sending it back. You can define as many expand patterns as you like, each with its own prefix/suffix/task, as long as no two entries share the exact same prefix+suffix pair.</div>
+    <div class="desc">Here <code>%amck_keyword</code> received by the task is <code>12*3.5</code> - the task just needs a "Variable Set" action doing the arithmetic and sending it back. You can define as many expand patterns as you like, each with its own prefix/suffix/task, as long as no two entries share the exact same prefix+suffix pair.
+    <br><br><b>Note:</b> this is a simplified example of the classic, one-shot form of an expand pattern. Patterns now support a lot more - regex-based prefix/suffix matching, a "replace_prefix" option, and a continuous "fire_on_suffix": "false" live mode with its own %amck_keyword_stop signal - see the Variables reference below for the full current variable list; the config file's own inline comments are the most up-to-date place to see every field an entry supports.</div>
     <div class="field-block" style="margin-top:12px;">
         <span class="field-name">regex</span><span class="field-meta">Text, optional</span>
         <div><span class="example-chip">{ "prefix": "==", "regex": "\d+.+\d", "suffix": "\n", "task": "doMath" }</span></div>
@@ -321,13 +323,13 @@
     </div>
     <ol class="steps">
         <li><b>Create the task</b> in Tasker and give it the name you used in the config (e.g. <code>Fix Grammar</code>).</li>
-        <li><b>Use the input variables.</b> Inside the task you can reference <code>%text1</code>, <code>%text2</code> and <code>%keyword</code> directly (see the Variables reference below) - do whatever processing you need and store the result in a local variable, e.g. <code>%result</code>.</li>
+        <li><b>Use the input variables.</b> Inside the task you can reference <code>%amck_text1</code>, <code>%amck_text2</code> and <code>%amck_keyword</code> directly (see the Variables reference below) - do whatever processing you need and store the result in a local variable, e.g. <code>%result</code>.</li>
         <li><b>Add a final "Send Intent" action</b> with these fields:
             <pre class="setup-pre">Action:  &lt;your app id&gt;.TASKER_RESULT
-Extra:   requestid:%requestid
+Extra:   requestid:%amck_requestid
 Extra:   text:%result
 Target:  Broadcast Receiver</pre>
-            <div class="desc">Replace <code>&lt;your app id&gt;</code> with this app's own package name (e.g. <code>com.adiraimaji.customkeyboard</code>, or with a <code>.debug</code> suffix on a debug build) - the keyboard is listening for exactly this broadcast, tagged with the same <code>%requestid</code> it handed the task, so the reply gets matched to the right in-progress request even if you fire off several triggers back to back.</div>
+            <div class="desc">Replace <code>&lt;your app id&gt;</code> with this app's own package name (e.g. <code>com.adiraimaji.customkeyboard</code>, or with a <code>.debug</code> suffix on a debug build) - the keyboard is listening for exactly this broadcast, tagged with the same <code>%amck_requestid</code> it handed the task, so the reply gets matched to the right in-progress request even if you fire off several triggers back to back.</div>
         </li>
     </ol>
     <ul class="errors">
@@ -337,12 +339,13 @@ Target:  Broadcast Receiver</pre>
     <div class="badge-row" style="margin-top:16px;">
         <span class="method-badge plugin">METHOD 2</span><b>The "AM Custom Keyboard Return" plugin action (no manual Send Intent needed)</b>
     </div>
-    <div class="desc">If you have the companion <b>AM Tasker Plugins</b> app installed, it ships a ready-made plugin action - <b>AM Custom Keyboard Return</b> - that does exactly what Method 1's Send Intent action does, with the action name, package, target, and <code>requestid</code> wiring all pre-filled for you. The only thing you fill in is the text to send back.</div>
+    <div class="desc">If you have the companion <b>AM Tasker Plugins</b> app installed (<b>v1.1.0 or later</b> - see the note in One-time setup above), it ships a ready-made plugin action - <b>AM Custom Keyboard Return</b> - that does exactly what Method 1's Send Intent action does, with the action name, package, target, and <code>requestid</code> wiring all pre-filled for you. The only things you normally fill in are the text to send back and, if needed, a "Send to debug build" checkbox for targeting a debug install of this app instead of a production one.</div>
     <ol class="steps">
-        <li><b>Install AM Tasker Plugins</b> - get it from <a href="https://github.com/adiraimaji/AMTaskerPluginsReleases/releases">github.com/adiraimaji/AMTaskerPluginsReleases</a> (also reachable from <code>Settings &#8594; Tasker Automation &#8594; Get AM Tasker Plugins</code>).</li>
+        <li><b>Install AM Tasker Plugins v1.1.0+</b> - get it from <a href="https://github.com/adiraimaji/AMTaskerPluginsReleases/releases">github.com/adiraimaji/AMTaskerPluginsReleases</a> (also reachable from <code>Settings &#8594; Tasker Automation &#8594; Get AM Tasker Plugins</code>). An older version still uses the pre-rename <code>%requestid</code> variable and will not receive a reply from this version of the keyboard.</li>
         <li><b>Add its action</b> as the last step of your task: <code>Plugin &#8594; AM Tasker Plugins &#8594; AM Custom Keyboard Return</code>.</li>
         <li><b>Fill in "Return Text"</b> with the value to send back (type it directly, or tap the arrow button to insert a Tasker variable such as <code>%result</code>).</li>
-        <li>That's it - <code>requestid</code> is already hardcoded inside the plugin to the Tasker variable <code>%requestid</code>, so it's always sent correctly without you having to add or edit anything for it.</li>
+        <li>Leave <b>"Send to debug build"</b> unchecked unless the task was itself triggered by a <code>.debug</code> install of this app - check it in that case so the reply actually reaches it.</li>
+        <li>That's it for <code>requestid</code> - it's already hardcoded inside the plugin to the Tasker variable <code>%amck_requestid</code>, so it's always sent correctly without you having to add or edit anything for it.</li>
     </ol>
     <div class="desc">Method 2 is the faster, less error-prone option since there's no action string, extras, or target to type out by hand - it's a good default unless you'd rather keep your tasks free of an extra app dependency, in which case Method 1 works exactly the same way from Tasker's own broadcast.</div>
 </div>
@@ -351,25 +354,37 @@ Target:  Broadcast Receiver</pre>
     <div class="section-title">Variables reference</div>
     <div class="desc" style="margin-bottom:10px;"><b>What the task receives</b></div>
     <div class="outvar-block">
-        <div class="outvar-name">%text1</div>
+        <div class="outvar-name">%amck_text1</div>
         <div class="outvar-meaning">The field's text <i>before</i> the trigger/pattern you typed (with the trigger itself removed). Always set, can be empty.</div>
     </div>
     <div class="outvar-block">
-        <div class="outvar-name">%text2</div>
-        <div class="outvar-meaning">The field's text <i>after</i> the trigger/pattern. Left completely <b>unset</b> (not just empty) when there's nothing there, so a Tasker "If %text2 Set" check behaves as expected.</div>
+        <div class="outvar-name">%amck_text2</div>
+        <div class="outvar-meaning">The field's text <i>after</i> the trigger/pattern. Left completely <b>unset</b> (not just empty) when there's nothing there, so a Tasker "If %amck_text2 Set" check behaves as expected.</div>
     </div>
     <div class="outvar-block">
-        <div class="outvar-name">%keyword</div>
-        <div class="outvar-meaning">Just the keyword itself for a ##/@@ trigger (e.g. <code>runtask1</code>), or the free-form text between prefix and suffix for an expand pattern. Never includes the trigger symbols.</div>
+        <div class="outvar-name">%amck_keyword</div>
+        <div class="outvar-meaning">Just the keyword itself for a ##/@@ trigger (e.g. <code>runtask1</code>), or the free-form text matched by an expand pattern's "regex" for an <code>amck_patterns</code> entry. Never includes the trigger symbols, prefix, or suffix.</div>
     </div>
     <div class="outvar-block">
-        <div class="outvar-name">%requestid</div>
+        <div class="outvar-name">%amck_prefix</div>
+        <div class="outvar-meaning"><code>amck_patterns</code> entries only - never set for a ##/@@ trigger. The actual text the entry's "prefix" regex matched (can be an empty string for a zero-width match like "^"). Always sent for an expand pattern, on every call.</div>
+    </div>
+    <div class="outvar-block">
+        <div class="outvar-name">%amck_suffix</div>
+        <div class="outvar-meaning"><code>amck_patterns</code> entries only. The actual text the entry's "suffix" regex matched - only present once "suffix" has actually matched. Left completely <b>unset</b> on every earlier "still live" call from a "fire_on_suffix": "false" entry, where the word isn't finished yet.</div>
+    </div>
+    <div class="outvar-block">
+        <div class="outvar-name">%amck_keyword_stop</div>
+        <div class="outvar-meaning"><code>amck_patterns</code> entries only, and only for a "fire_on_suffix": "false" (live) entry. Set to <code>"true"</code> on the one-off call fired the instant the in-between text - having matched "regex" at least once already - stops matching it, before "suffix" ever completed. Left completely <b>unset</b> on every other call. Purely informational - e.g. use it to dismiss a popup the task showed - it doesn't require any different handling of the other variables.</div>
+    </div>
+    <div class="outvar-block">
+        <div class="outvar-name">%amck_requestid</div>
         <div class="outvar-meaning">A unique id for this specific call - echo it back unchanged (Method 1: as the <code>requestid</code> extra; Method 2: automatic, nothing to do).</div>
     </div>
     <div class="desc" style="margin:14px 0 10px 0;"><b>What the task must send back</b></div>
     <div class="outvar-block">
         <div class="outvar-name">requestid</div>
-        <div class="outvar-meaning">The exact same value received in <code>%requestid</code>.</div>
+        <div class="outvar-meaning">The exact same value received in <code>%amck_requestid</code>.</div>
     </div>
     <div class="outvar-block">
         <div class="outvar-name">text</div>

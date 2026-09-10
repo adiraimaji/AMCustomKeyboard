@@ -72,6 +72,7 @@ public class TaskerAutomationPreference extends Preference
                 "  \"runtask1\": \"Task 1\",\n" +
                 "  \"amck_patterns\": [\n" +
                 "    {\n" +
+                "      \"name\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_NAME + "\",\n" +
                 "      \"prefix\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX + "\",\n" +
                 "      \"suffix\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX + "\",\n" +
                 "      \"replace_prefix\": \"" + TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX + "\",\n" +
@@ -79,6 +80,7 @@ public class TaskerAutomationPreference extends Preference
                 "      \"task\": \"Expand Task 1\"\n" +
                 "    },\n" +
                 "    {\n" +
+                "      \"name\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_NAME + "\",\n" +
                 "      \"prefix\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_PREFIX + "\",\n" +
                 "      \"regex\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REGEX + "\",\n" +
                 "      \"suffix\": \"" + TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_SUFFIX + "\",\n" +
@@ -131,6 +133,7 @@ public class TaskerAutomationPreference extends Preference
         if (needs_default_expand_patterns)
         {
             List<Map.Entry<String, String>> classic_entry = new ArrayList<>();
+            classic_entry.add(new AbstractMap.SimpleEntry<>("name", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_NAME));
             classic_entry.add(new AbstractMap.SimpleEntry<>("prefix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_PREFIX));
             classic_entry.add(new AbstractMap.SimpleEntry<>("suffix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_SUFFIX));
             classic_entry.add(new AbstractMap.SimpleEntry<>("replace_prefix", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_REPLACE_PREFIX));
@@ -138,6 +141,7 @@ public class TaskerAutomationPreference extends Preference
             classic_entry.add(new AbstractMap.SimpleEntry<>("task", TaskerAutomationConfig.DEFAULT_EXPAND_PATTERN_TASK));
 
             List<Map.Entry<String, String>> live_entry = new ArrayList<>();
+            live_entry.add(new AbstractMap.SimpleEntry<>("name", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_NAME));
             live_entry.add(new AbstractMap.SimpleEntry<>("prefix", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_PREFIX));
             live_entry.add(new AbstractMap.SimpleEntry<>(TaskerAutomationConfig.KEY_EXPAND_PATTERN_REGEX, TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_REGEX));
             live_entry.add(new AbstractMap.SimpleEntry<>("suffix", TaskerAutomationConfig.DEFAULT_LIVE_PATTERN_SUFFIX));

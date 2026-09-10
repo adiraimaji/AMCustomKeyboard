@@ -260,6 +260,32 @@ public class TaskerTriggerEngine
      sibling doc for why comparing positions for exact equality never
      needs eager invalidation. */
     private int[] _expand_live_toast_prefix_end = new int[0];
+    /** Same length as [_config.expand_patterns] again - the
+     [prefix_end] position this occurrence's in-between text has most
+     recently matched "regex" live at, or -1 if it never has (or hasn't
+     since the occurrence last closed). Kept entirely separate from
+     [_expand_live_toast_prefix_end] - despite both being set at the
+     same moment a live match first succeeds - since they answer two
+     different questions ("should I show the toast" vs "should a
+     failure now count as 'stopped matching' rather than 'never
+     started'") that happen to coincide today but shouldn't be
+     conflated. This is the one [check_expand_patterns] actually
+     checks before firing the %amck_keyword_stop=true signal below. */
+    private int[] _expand_live_matched_prefix_end = new int[0];
+    /** Same length as [_config.expand_patterns] again - the
+     [prefix_end] position a %amck_keyword_stop=true call has already
+     been fired for, since the last time that occurrence's in-between
+     text matched "regex", or -1 if no such call is currently
+     outstanding. Together with [_expand_live_matched_prefix_end], this
+     is what lets [check_expand_patterns] fire that one-off "the word
+     I was tracking stopped matching" signal exactly once per failure
+     streak: set the instant that signal fires, and cleared again the
+     next time this same occurrence's in-between text goes back to
+     matching "regex" - so a later failure (after a resumed match) can
+     fire it again. Only ever consulted/set for a "fire_on_suffix":
+     "false" entry - a "true" one never live-matches "regex" at all,
+     so it has nothing to "just stop" matching. */
+    private int[] _expand_regex_fail_fired_prefix_end = new int[0];
 
     /** One-shot undo state for the replacement that was just
      committed - null/0 whenever there is nothing to undo. See
@@ -306,22 +332,27 @@ public class TaskerTriggerEngine
     }
 
     /** (Re)builds [_expand_closed_prefix_end]/[_expand_closed_content]/
-     [_expand_live_toast_prefix_end], sized to whatever
+     [_expand_live_toast_prefix_end]/[_expand_live_matched_prefix_end]/
+     [_expand_regex_fail_fired_prefix_end], sized to whatever
      [_config.expand_patterns] currently is (0 if [_config] is null),
-     with every slot cleared to "nothing closed / no toast shown".
-     Called both when the config itself changes (from [reload], where
-     the size may genuinely differ from before) and on every field
-     change (from [new_field_started], where the size never actually
-     changes but re-clearing this way is simpler than a separate
-     "same size, just reset values" path). */
+     with every slot cleared to "nothing closed / no toast shown / never
+     matched / no stop signal outstanding". Called both when the config
+     itself changes (from [reload], where the size may genuinely differ
+     from before) and on every field change (from [new_field_started],
+     where the size never actually changes but re-clearing this way is
+     simpler than a separate "same size, just reset values" path). */
     private void reset_expand_closed_state()
     {
         int n = (_config != null) ? _config.expand_patterns.size() : 0;
         _expand_closed_prefix_end = new int[n];
         _expand_closed_content = new String[n];
         _expand_live_toast_prefix_end = new int[n];
+        _expand_live_matched_prefix_end = new int[n];
+        _expand_regex_fail_fired_prefix_end = new int[n];
         java.util.Arrays.fill(_expand_closed_prefix_end, -1);
         java.util.Arrays.fill(_expand_live_toast_prefix_end, -1);
+        java.util.Arrays.fill(_expand_live_matched_prefix_end, -1);
+        java.util.Arrays.fill(_expand_regex_fail_fired_prefix_end, -1);
     }
 
     /** Reloads the single stored Tasker Automation config from storage.
@@ -842,11 +873,25 @@ public class TaskerTriggerEngine
 
                 // A newline anywhere in the in-between text means the
                 // user has moved to a new line since [prefix] matched -
-                // this occurrence is stale.
-                if (content.indexOf('\n') >= 0)
-                    continue;
+                // a match (live or final) can never span one, so this
+                // occurrence can no longer complete as-is. It's NOT
+                // simply skipped outright the way it used to be, though
+                // - see the "stopped matching" branch below, which this
+                // now feeds into just like an ordinary regex failure,
+                // so typing Enter right after a live match correctly
+                // still fires the one-off %amck_keyword_stop signal
+                // instead of silently doing nothing.
+                int newline_idx = content.indexOf('\n');
+                boolean has_newline = newline_idx >= 0;
+                // What "regex" last matched before the newline (or all
+                // of [content], when there isn't one) - used as
+                // %amck_keyword for the "stopped matching" branch below
+                // when a newline is what ended this occurrence, since
+                // sending a multi-line %amck_keyword there would make
+                // little sense.
+                String content_before_newline = has_newline ? content.substring(0, newline_idx) : content;
 
-                int split = find_suffix_split(content, p);
+                int split = has_newline ? -1 : find_suffix_split(content, p);
                 if (split >= 0)
                 {
                     // A full "regex"+"suffix" match, ending exactly at
@@ -861,14 +906,16 @@ public class TaskerTriggerEngine
                     _expand_closed_prefix_end[i] = prefix_end;
                     _expand_closed_content[i] = keyword + suffix_match;
                     _expand_live_toast_prefix_end[i] = -1; // Finished - nothing left to (re)toast for.
+                    _expand_live_matched_prefix_end[i] = -1; // Finished - nothing left to "stop" from here.
+                    _expand_regex_fail_fired_prefix_end[i] = -1; // Finished - nothing left to signal a failure for.
                     if (p.fire_on_suffix)
                         android.widget.Toast.makeText(ctx,
                                 "Running \"" + p.task + "\"\u2026", android.widget.Toast.LENGTH_SHORT).show();
                     fire_expand(ctx, conn, wt, late_conn_provider,
-                            text_before.substring(0, prefix_start), prefix_match, keyword, suffix_match, p);
+                            text_before.substring(0, prefix_start), prefix_match, keyword, suffix_match, p, false);
                     acted = true;
                 }
-                else if (!p.fire_on_suffix && matches_keyword(content, p))
+                else if (!has_newline && !p.fire_on_suffix && matches_keyword(content, p))
                 {
                     // Still live - no "suffix" yet, but the in-between
                     // text so far already satisfies "regex" (or is just
@@ -884,13 +931,44 @@ public class TaskerTriggerEngine
                         android.widget.Toast.makeText(ctx,
                                 "Running \"" + p.task + "\"\u2026", android.widget.Toast.LENGTH_SHORT).show();
                     }
+                    // Recorded as "has matched live" for the "stopped
+                    // matching" branch below, and any earlier failure
+                    // signal for this occurrence no longer applies -
+                    // "regex" matches again (even if it never stopped),
+                    // so a future failure should be free to signal once
+                    // more.
+                    _expand_live_matched_prefix_end[i] = prefix_end;
+                    _expand_regex_fail_fired_prefix_end[i] = -1;
                     String prefix_match = text_before.substring(prefix_start, prefix_end);
                     fire_expand(ctx, conn, wt, late_conn_provider,
-                            text_before.substring(0, prefix_start), prefix_match, content, null, p);
+                            text_before.substring(0, prefix_start), prefix_match, content, null, p, false);
                     acted = true;
                 }
-                // Otherwise: too little typed yet, or content no longer
-                // matches at all - try an earlier prefix match, if any.
+                else if (!p.fire_on_suffix && _expand_live_matched_prefix_end[i] == prefix_end
+                        && _expand_regex_fail_fired_prefix_end[i] != prefix_end)
+                {
+                    // This occurrence has matched "regex" live at least
+                    // once before (see [_expand_live_matched_prefix_end]),
+                    // but no longer does right now - either the
+                    // in-between text stopped satisfying "regex" (most
+                    // often: it got shorter, e.g. via backspace), or a
+                    // newline just ended it outright - and no "suffix"
+                    // has matched either. Either way, "regex" just
+                    // stopped being satisfiable. Fire [task] ONE more
+                    // time, with %amck_keyword_stop=true, purely so it
+                    // can react (e.g. dismiss a popup it showed) - then
+                    // don't fire again for this same failure streak; a
+                    // later keystroke that goes back to matching
+                    // "regex" resets this above, so a further failure
+                    // after that can signal again.
+                    _expand_regex_fail_fired_prefix_end[i] = prefix_end;
+                    String prefix_match = text_before.substring(prefix_start, prefix_end);
+                    fire_expand(ctx, conn, wt, late_conn_provider,
+                            text_before.substring(0, prefix_start), prefix_match, content_before_newline, null, p, true);
+                    acted = true;
+                }
+                // Otherwise: too little typed yet, or content never
+                // matched at all - try an earlier prefix match, if any.
             }
 
             if (acted)
@@ -963,19 +1041,29 @@ public class TaskerTriggerEngine
      [prefix_match] is the actual text "prefix" matched (often, but
      not always, non-empty - e.g. "" for a zero-width "^" match).
      [keyword] is the actual text "regex" (or, with none configured,
-     whatever non-empty in-between text) matched. [suffix_match] is
-     null on every "still live" call (nothing to send as %suffix yet,
-     and nothing but [keyword] is ever eligible to be replaced); once
-     "suffix" has matched, it's the actual text "suffix" matched -
-     sent as %suffix, and included (along with [keyword]) in whatever
-     gets replaced. [p.replace_prefix] additionally decides whether
-     [prefix_match] itself is ALSO part of what gets replaced, on top
-     of [keyword] (+ [suffix_match] if present) - see the class doc. */
+     whatever non-empty in-between text) matched or, when
+     [keyword_stop] is true, whatever in-between text most recently
+     FAILED to match it. [suffix_match] is null on every "still live"
+     or "just stopped matching" call (nothing to send as %amck_suffix
+     yet, and nothing but [keyword] is ever eligible to be replaced);
+     once "suffix" has matched, it's the actual text "suffix" matched -
+     sent as %amck_suffix, and included (along with [keyword]) in
+     whatever gets replaced. [p.replace_prefix] additionally decides
+     whether [prefix_match] itself is ALSO part of what gets replaced,
+     on top of [keyword] (+ [suffix_match] if present) - see the class
+     doc. [keyword_stop] is true only for the one-off call fired the
+     instant a "fire_on_suffix": "false" entry's in-between text stops
+     matching "regex" (before "suffix" ever matched) - see
+     [check_expand_patterns] - sent as %amck_keyword_stop so the task
+     can react (e.g. dismiss a popup), otherwise left unset; a reply
+     to this call is applied exactly like any other, on the off chance
+     the task still has something useful to say. */
     private void fire_expand(final Context ctx, InputConnection conn,
                              final KeymapEngine.WordTrackerCallback wt,
                              final InputConnectionProvider late_conn_provider,
                              final String text1, final String prefix_match, String keyword,
-                             final String suffix_match, final TaskerAutomationConfig.ExpandPattern p)
+                             final String suffix_match, final TaskerAutomationConfig.ExpandPattern p,
+                             final boolean keyword_stop)
     {
         // Every fire clears any earlier one-shot undo, same reasoning
         // as dictionary triggers - the user has moved on. Since a
@@ -1007,7 +1095,7 @@ public class TaskerTriggerEngine
             return;
         }
 
-        TaskerBridge.run_task(ctx, p.task, text1, text2, prefix_match, keyword_final, suffix_match, _config.timeout_ms,
+        TaskerBridge.run_task(ctx, p.task, text1, text2, prefix_match, keyword_final, suffix_match, keyword_stop, _config.timeout_ms,
                 new TaskerBridge.ResultCallback()
                 {
                     public void result(String output, String error_message)

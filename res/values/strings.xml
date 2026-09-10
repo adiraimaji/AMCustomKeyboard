@@ -278,8 +278,16 @@
     <string name="tasker_builder_pattern_fire_on_suffix_label">Fire only on suffix (off = live as you type)</string>
     <string name="tasker_builder_pattern_task_label">Task</string>
     <string name="tasker_builder_pattern_task_hint">Tasker task name</string>
+    <string name="tasker_builder_pattern_name_hint">Unnamed</string>
     <string name="tasker_builder_add_pattern">+ Add expand pattern</string>
     <string name="tasker_builder_remove_row">Remove row</string>
+    <string name="tasker_builder_expand_pattern">Expand pattern</string>
+    <string name="tasker_builder_collapse_pattern">Collapse pattern</string>
+    <string name="tasker_builder_delete_pattern_title">Delete this pattern?</string>
+    <string name="tasker_builder_delete_pattern_message_named">Delete the pattern \"%1$s\"? This can\'t be undone.</string>
+    <string name="tasker_builder_delete_pattern_message_unnamed">Delete this pattern? This can\'t be undone.</string>
+    <string name="tasker_builder_delete">Delete</string>
+    <string name="tasker_builder_cancel">Cancel</string>
     <string name="tasker_builder_save">Save</string>
     <string name="tasker_builder_saved_toast">Automation config saved</string>
 
